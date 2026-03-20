@@ -138,19 +138,6 @@ export default function ActivityPage() {
         )}
       </div>
 
-      <style jsx>{`
-        .activity-page { max-width: 1000px; }
-        .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-        .page-header h1 { margin-bottom: 4px; }
-        .page-header p { font-size: 13px; color: var(--text-muted); }
-
-        .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-        .search-input { position: relative; flex: 1; max-width: 360px; }
-        .search-input input { padding-left: 36px; }
-        :global(.search-icon) { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
-
-        .log-table { overflow-x: auto; }
-      `}</style>
     </div>
   )
 }
