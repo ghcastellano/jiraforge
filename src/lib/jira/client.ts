@@ -143,6 +143,8 @@ export class JiraClient {
   }
 
   // ─── Workflows ──────────────────────────────────────────
+  // Uses the new Bulk create workflows API (POST /rest/api/3/workflows/create)
+  // The old POST /rest/api/3/workflow/create was deprecated (removal Feb 2026)
   async createWorkflow(payload: {
     name: string
     description?: string
@@ -157,10 +159,46 @@ export class JiraClient {
       type: 'INITIAL' | 'DIRECTED' | 'GLOBAL'
     }[]
   }): Promise<{ id: { entityId: string }; name: string }> {
-    return this.request('/workflow/create', {
+    // Generate UUID-like statusReferences for each status
+    const statusRefs = payload.statuses.map((s) => ({
+      ...s,
+      statusReference: crypto.randomUUID(),
+    }))
+
+    // Build a name→statusReference map for transitions
+    const refMap = Object.fromEntries(statusRefs.map(s => [s.name, s.statusReference]))
+
+    const bulkPayload = {
+      scope: { type: 'GLOBAL' as const },
+      statuses: statusRefs.map(s => ({
+        name: s.name,
+        statusCategory: s.statusCategory,
+        statusReference: s.statusReference,
+        description: '',
+      })),
+      workflows: [{
+        name: payload.name,
+        description: payload.description ?? '',
+        statuses: statusRefs.map(s => ({
+          statusReference: s.statusReference,
+          properties: {},
+        })),
+        transitions: payload.transitions.map(t => ({
+          name: t.name,
+          from: t.from.map(fromName => ({ statusReference: refMap[fromName] })).filter(r => r.statusReference),
+          to: { statusReference: refMap[t.to] },
+          type: t.type.toLowerCase(),
+        })),
+      }],
+    }
+
+    const result = await this.request<{ workflows: { entityId: string; name: string }[] }>('/workflows/create', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(bulkPayload),
     })
+
+    const created = result.workflows[0]
+    return { id: { entityId: created.entityId }, name: created.name }
   }
 
   // ─── Workflow Schemes ───────────────────────────────────

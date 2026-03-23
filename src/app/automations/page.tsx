@@ -7,55 +7,14 @@ import {
   AlertCircle, Loader2, RefreshCw, X, ChevronRight,
   Activity, Wifi
 } from 'lucide-react'
+import { useAutomations, useTenants } from '@/hooks'
+import type { AutomationRule } from '@/types'
 
 const RULE_LABELS: Record<string, { label: string; desc: string; icon: string }> = {
-  story_bug_to_epic:    { label: 'Story/Bug → Épico Done',     desc: 'Quando todos os filhos de um épico estiverem Done, move o épico para Done automaticamente.',      icon: '📝' },
-  epic_to_initiative:   { label: 'Épico → Iniciativa Done',    desc: 'Quando todos os épicos de uma iniciativa estiverem Done, move a iniciativa para Done.',            icon: '⚡' },
-  sprint_close_notify:  { label: 'Sprint fechado c/ issues abertas', desc: 'Notifica via webhook quando um sprint é fechado com issues ainda em aberto.', icon: '🔔' },
+  story_bug_to_epic:    { label: 'Story/Bug -> Epico Done',     desc: 'Quando todos os filhos de um epico estiverem Done, move o epico para Done automaticamente.',      icon: '📝' },
+  epic_to_initiative:   { label: 'Epico -> Iniciativa Done',    desc: 'Quando todos os epicos de uma iniciativa estiverem Done, move a iniciativa para Done.',            icon: '⚡' },
+  sprint_close_notify:  { label: 'Sprint fechado c/ issues abertas', desc: 'Notifica via webhook quando um sprint e fechado com issues ainda em aberto.', icon: '🔔' },
 }
-
-const MOCK_RULES = [
-  {
-    id: '1', rule_type: 'story_bug_to_epic', active: true,
-    tenant_id: '1', project_key: null,
-    trigger_count: 47, last_triggered_at: '2025-03-20T09:14:00Z',
-    last_error: null, webhook_id: '10023',
-    connection: { id: 'c1', name: 'Avangrid Production', jira_base_url: 'https://avangrid.atlassian.net' },
-    tenant: { name: 'Avangrid' },
-  },
-  {
-    id: '2', rule_type: 'epic_to_initiative', active: true,
-    tenant_id: '1', project_key: 'DAP',
-    trigger_count: 12, last_triggered_at: '2025-03-19T16:30:00Z',
-    last_error: null, webhook_id: '10024',
-    connection: { id: 'c1', name: 'Avangrid Production', jira_base_url: 'https://avangrid.atlassian.net' },
-    tenant: { name: 'Avangrid' },
-  },
-  {
-    id: '3', rule_type: 'story_bug_to_epic', active: true,
-    tenant_id: '2', project_key: null,
-    trigger_count: 8, last_triggered_at: '2025-03-18T11:00:00Z',
-    last_error: null, webhook_id: '10025',
-    connection: { id: 'c2', name: 'Santander BR', jira_base_url: 'https://santander-br.atlassian.net' },
-    tenant: { name: 'Santander' },
-  },
-  {
-    id: '4', rule_type: 'epic_to_initiative', active: false,
-    tenant_id: '2', project_key: null,
-    trigger_count: 2, last_triggered_at: '2025-03-10T08:00:00Z',
-    last_error: 'Webhook timeout — Jira não respondeu em 30s',
-    webhook_id: '10026',
-    connection: { id: 'c3', name: 'Santander ES', jira_base_url: 'https://santander-es.atlassian.net' },
-    tenant: { name: 'Santander' },
-  },
-]
-
-const MOCK_LOGS = [
-  { id: '1', rule_id: '1', trigger_issue: 'AVNG-87', result: 'rolled_up', details: { parent: 'AVNG-14', children_count: 5 }, duration_ms: 312, created_at: '2025-03-20T09:14:00Z' },
-  { id: '2', rule_id: '1', trigger_issue: 'AVNG-82', result: 'skipped',   details: { reason: '2 children still open' }, duration_ms: 180, created_at: '2025-03-20T08:30:00Z' },
-  { id: '3', rule_id: '2', trigger_issue: 'DAP-31',  result: 'rolled_up', details: { parent: 'DAP-5', children_count: 3 }, duration_ms: 290, created_at: '2025-03-19T16:30:00Z' },
-  { id: '4', rule_id: '4', trigger_issue: 'SANT-12', result: 'error',     details: { reason: 'Webhook timeout' }, duration_ms: 30000, created_at: '2025-03-10T08:00:00Z' },
-]
 
 function ServiceStatus() {
   const [checking, setChecking] = useState(false)
@@ -91,14 +50,12 @@ function ServiceStatus() {
 }
 
 function RuleCard({ rule, onToggle, onDelete, onShowLogs }: {
-  rule: typeof MOCK_RULES[0]
+  rule: AutomationRule
   onToggle: (id: string, active: boolean) => void
   onDelete: (id: string) => void
   onShowLogs: (id: string) => void
 }) {
-  const info = RULE_LABELS[rule.rule_type]
-  const logs = MOCK_LOGS.filter(l => l.rule_id === rule.id)
-  const lastLog = logs[0]
+  const info = RULE_LABELS[rule.rule_type] ?? { label: rule.rule_type, desc: '', icon: '⚡' }
 
   return (
     <div className={`rule-card ${!rule.active ? 'inactive' : ''}`}>
@@ -108,7 +65,7 @@ function RuleCard({ rule, onToggle, onDelete, onShowLogs }: {
           <div>
             <div className="rule-name">{info.label}</div>
             <div className="rule-meta">
-              <Wifi size={11} /> {rule.connection.name}
+              <Wifi size={11} /> {rule.connection?.name ?? 'Conexao desconhecida'}
               {rule.project_key && <><span className="dot-sep" /> <code>{rule.project_key}</code></>}
               {!rule.project_key && <><span className="dot-sep" /> todos os projetos</>}
             </div>
@@ -142,99 +99,66 @@ function RuleCard({ rule, onToggle, onDelete, onShowLogs }: {
       )}
 
       <div className="rule-flow">
-        <span className="flow-pill trigger">Issue transicionada → Done</span>
+        <span className="flow-pill trigger">Issue transicionada -&gt; Done</span>
         <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />
-        <span className="flow-pill condition">todos irmãos Done?</span>
+        <span className="flow-pill condition">todos irmaos Done?</span>
         <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />
-        <span className="flow-pill action">Pai → Done</span>
-        <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto', fontSize: 11 }} onClick={() => onShowLogs(rule.id)}>
-          <Activity size={11} /> Ver logs
-        </button>
+        <span className="flow-pill action">Pai -&gt; Done</span>
       </div>
 
-      {lastLog && (
+      {rule.last_triggered_at && (
         <div className="rule-last">
-          Último trigger: <strong>{lastLog.trigger_issue}</strong> →
-          <span className={lastLog.result === 'rolled_up' ? 'text-green' : lastLog.result === 'error' ? 'text-red' : 'text-muted'}>
-            {' '}{lastLog.result === 'rolled_up' ? '✓ roll-up executado' : lastLog.result === 'skipped' ? '— ignorado' : '✕ erro'}
-          </span>
-          <span className="muted"> · {lastLog.duration_ms}ms · {new Date(lastLog.created_at).toLocaleDateString('pt-BR')}</span>
+          Ultimo trigger: {new Date(rule.last_triggered_at).toLocaleDateString('pt-BR')}
+          <span className="muted"> - {rule.trigger_count} execucoes</span>
         </div>
       )}
     </div>
   )
 }
 
-function LogsModal({ ruleId, onClose }: { ruleId: string; onClose: () => void }) {
-  const logs = MOCK_LOGS.filter(l => l.rule_id === ruleId)
-  const info = RULE_LABELS[MOCK_RULES.find(r => r.id === ruleId)?.rule_type ?? '']
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>Logs de execução</h2>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{info?.label}</p>
-          </div>
-          <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={16} /></button>
-        </div>
-        <div className="modal-body">
-          {logs.length === 0
-            ? <div className="empty-state"><div className="empty-icon"><Activity size={18} /></div><div className="empty-title">Sem logs ainda</div></div>
-            : logs.map(log => (
-              <div key={log.id} className={`log-row ${log.result}`}>
-                <div className={`log-dot ${log.result}`} />
-                <div style={{ flex: 1 }}>
-                  <div className="log-title">
-                    <strong>{log.trigger_issue}</strong>
-                    <span className={`badge ${log.result === 'rolled_up' ? 'badge-green' : log.result === 'error' ? 'badge-red' : 'badge-muted'}`}>
-                      {log.result === 'rolled_up' ? 'Roll-up executado' : log.result === 'skipped' ? 'Ignorado' : 'Erro'}
-                    </span>
-                  </div>
-                  <div className="log-detail">
-                    {log.result === 'rolled_up' && `Pai: ${(log.details as { parent: string }).parent} · ${(log.details as { children_count: number }).children_count} filhos concluídos`}
-                    {log.result === 'skipped' && (log.details as { reason: string }).reason}
-                    {log.result === 'error' && (log.details as { reason: string }).reason}
-                    <span className="muted"> · {log.duration_ms}ms · {new Date(log.created_at).toLocaleString('pt-BR')}</span>
-                  </div>
-                </div>
-              </div>
-            ))
-          }
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-primary" onClick={onClose}>Fechar</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function AutomationsPage() {
-  const [rules, setRules] = useState(MOCK_RULES)
-  const [logsModal, setLogsModal] = useState<string | null>(null)
+  const { rules, loading, reload, toggleRule } = useAutomations()
+  const { tenants, loading: tenantsLoading } = useTenants()
   const [filterTenant, setFilterTenant] = useState('all')
-
-  const tenants = [...new Map(rules.map(r => [r.tenant_id, r.tenant.name])).entries()]
 
   const filtered = rules.filter(r => filterTenant === 'all' || r.tenant_id === filterTenant)
 
-  const toggle = (id: string, active: boolean) =>
-    setRules(rs => rs.map(r => r.id === id ? { ...r, active } : r))
+  const handleToggle = async (id: string, active: boolean) => {
+    await toggleRule(id, active)
+  }
 
-  const del = (id: string) => setRules(rs => rs.filter(r => r.id !== id))
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/automations/${id}`, { method: 'DELETE' })
+    reload()
+  }
 
   const active = rules.filter(r => r.active).length
   const total  = rules.length
   const errors = rules.filter(r => r.last_error).length
+
+  if (loading) {
+    return (
+      <div className="automations-page">
+        <div className="page-header">
+          <div>
+            <h1>Roll-up Rules</h1>
+            <p>Automacoes de hierarquia implementadas via webhook service</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 80 }}>
+          <Loader2 size={24} className="animate-spin" style={{ color: 'var(--brand)' }} />
+          <span style={{ marginLeft: 12, color: 'var(--text-muted)' }}>Carregando regras...</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="automations-page">
       <div className="page-header">
         <div>
           <h1>Roll-up Rules</h1>
-          <p>Automações de hierarquia implementadas via webhook service</p>
+          <p>Automacoes de hierarquia implementadas via webhook service</p>
         </div>
         <button className="btn btn-primary"><Plus size={14} /> Nova rule</button>
       </div>
@@ -258,17 +182,13 @@ export default function AutomationsPage() {
           <span className="stat-value" style={{ color: errors > 0 ? 'var(--red)' : 'var(--text-muted)' }}>{errors}</span>
           <span className="stat-label">Com erro</span>
         </div>
-        <div className="stat-card">
-          <span className="stat-value">{MOCK_LOGS.filter(l => l.result === 'rolled_up').length}</span>
-          <span className="stat-label">Roll-ups executados</span>
-        </div>
       </div>
 
       <div className="toolbar">
         <div className="filter-tabs">
           <button className={`filter-tab ${filterTenant === 'all' ? 'active' : ''}`} onClick={() => setFilterTenant('all')}>Todos os clientes</button>
-          {tenants.map(([id, name]) => (
-            <button key={id} className={`filter-tab ${filterTenant === id ? 'active' : ''}`} onClick={() => setFilterTenant(id)}>{name}</button>
+          {!tenantsLoading && tenants.map(t => (
+            <button key={t.id} className={`filter-tab ${filterTenant === t.id ? 'active' : ''}`} onClick={() => setFilterTenant(t.id)}>{t.name}</button>
           ))}
         </div>
       </div>
@@ -278,9 +198,9 @@ export default function AutomationsPage() {
           <RuleCard
             key={r.id}
             rule={r}
-            onToggle={toggle}
-            onDelete={del}
-            onShowLogs={setLogsModal}
+            onToggle={handleToggle}
+            onDelete={handleDelete}
+            onShowLogs={() => {}}
           />
         ))}
         {filtered.length === 0 && (
@@ -292,8 +212,6 @@ export default function AutomationsPage() {
           </div>
         )}
       </div>
-
-      {logsModal && <LogsModal ruleId={logsModal} onClose={() => setLogsModal(null)} />}
 
     </div>
   )

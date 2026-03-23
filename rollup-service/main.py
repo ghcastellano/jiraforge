@@ -74,16 +74,31 @@ async def get_jira_credentials(connection_id: str) -> tuple[str, dict]:
         return data["base_url"], data["headers"]
 
 async def get_issue_children(base_url: str, auth_headers: dict, parent_key: str) -> list[dict]:
-    """Get all child issues of a parent"""
+    """Get all child issues of a parent using the new search/jql endpoint"""
     jql = f'parent = {parent_key}'
+    all_issues = []
+    next_page_token = None
+
     async with httpx.AsyncClient() as client:
-        res = await client.get(
-            f"{base_url}/rest/api/3/search",
-            params={"jql": jql, "fields": "status,issuetype,summary", "maxResults": 200},
-            headers=auth_headers,
-        )
-        res.raise_for_status()
-        return res.json().get("issues", [])
+        while True:
+            params = {"jql": jql, "fields": "status,issuetype,summary", "maxResults": 200}
+            if next_page_token:
+                params["nextPageToken"] = next_page_token
+
+            res = await client.get(
+                f"{base_url}/rest/api/3/search/jql",
+                params=params,
+                headers=auth_headers,
+            )
+            res.raise_for_status()
+            data = res.json()
+            all_issues.extend(data.get("issues", []))
+
+            next_page_token = data.get("nextPageToken")
+            if not next_page_token:
+                break
+
+    return all_issues
 
 async def get_issue(base_url: str, auth_headers: dict, issue_key: str) -> dict:
     async with httpx.AsyncClient() as client:
