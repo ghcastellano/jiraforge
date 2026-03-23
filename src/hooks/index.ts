@@ -96,11 +96,40 @@ export function useTemplates() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetcher<Template[]>('/api/templates').then(setTemplates).finally(() => setLoading(false))
+  const load = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await fetcher<Template[]>('/api/templates')
+      setTemplates(data)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  return { templates, loading }
+  useEffect(() => { load() }, [load])
+
+  const createTemplate = async (payload: {
+    name: string
+    description?: string
+    icon?: string
+    is_global: boolean
+    tenant_id?: string
+    config: import('@/types').TemplateConfig
+    tags: string[]
+    created_by: string
+  }) => {
+    const res = await fetch('/api/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error)
+    setTemplates(ts => [...ts, json.data])
+    return json.data as Template
+  }
+
+  return { templates, loading, reload: load, createTemplate }
 }
 
 // ─── useProjects ──────────────────────────────────────────

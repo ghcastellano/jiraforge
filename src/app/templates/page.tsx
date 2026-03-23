@@ -1,76 +1,30 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Plus, Search, BookOpen, Edit3, Copy, Trash2,
   Globe, Lock, Star, ChevronRight, X, Check,
   Loader2, Tag
 } from 'lucide-react'
-
-const MOCK_TEMPLATES = [
-  {
-    id: '1', name: 'Scrum + Advanced Roadmaps', icon: '🚀',
-    description: 'Hierarquia 3 níveis: Iniciativa → Épico → US/Bug com suporte a Advanced Roadmaps (Jira Premium)',
-    is_global: true, used_count: 4, tags: ['Scrum', 'Roadmaps', 'Premium'],
-    config: {
-      issueTypes: ['Iniciativa', 'Épico', 'User Story', 'Bug', 'Subtask'],
-      customFields: ['OKR Key Result', 'Story Points', 'Squad', 'Severidade'],
-      workflow: ['Backlog', 'Em progresso', 'Em revisão', 'Done', 'Bloqueado'],
-    },
-  },
-  {
-    id: '2', name: 'Kanban simples', icon: '📋',
-    description: 'Fluxo contínuo sem sprints. Ideal para suporte, operações e times de manutenção.',
-    is_global: true, used_count: 2, tags: ['Kanban'],
-    config: {
-      issueTypes: ['Épico', 'User Story', 'Bug', 'Subtask'],
-      customFields: ['Story Points', 'Priority'],
-      workflow: ['To Do', 'In Progress', 'Done'],
-    },
-  },
-  {
-    id: '3', name: 'SAFe-lite', icon: '⚡',
-    description: 'Portfolio → Programa → Time. Adaptação leve do SAFe para times ágeis em escala.',
-    is_global: true, used_count: 1, tags: ['SAFe', 'Enterprise', 'Premium'],
-    config: {
-      issueTypes: ['Portfolio Item', 'Program Increment', 'Epic', 'Story', 'Task'],
-      customFields: ['Business Value', 'WSJF Score', 'PI Objective'],
-      workflow: ['Funnel', 'Analysis', 'Backlog', 'Implementing', 'Validating', 'Done'],
-    },
-  },
-  {
-    id: '4', name: 'Suporte / ITSM', icon: '🔧',
-    description: 'Incidentes, mudanças, SLAs. Configurado para times de suporte.',
-    is_global: true, used_count: 0, tags: ['ITSM', 'Suporte'],
-    config: {
-      issueTypes: ['Incidente', 'Mudança', 'Problema', 'Tarefa'],
-      customFields: ['Severidade', 'SLA', 'Cliente afetado'],
-      workflow: ['Novo', 'Em triagem', 'Em resolução', 'Aguardando', 'Resolvido'],
-    },
-  },
-  {
-    id: '5', name: 'Data Project', icon: '📊',
-    description: 'Pipelines de dados, datasets, dashboards. Específico para times de Data & Analytics.',
-    is_global: true, used_count: 0, tags: ['Data', 'Analytics'],
-    config: {
-      issueTypes: ['Iniciativa Data', 'Pipeline', 'Dataset', 'Dashboard', 'Bug'],
-      customFields: ['Fonte de dados', 'SLA de atualização', 'Owner'],
-      workflow: ['Backlog', 'Em desenvolvimento', 'Em validação', 'Produção'],
-    },
-  },
-]
+import { useTemplates } from '@/hooks'
+import type { Template } from '@/types'
 
 function TemplateDetail({ template, onClose, onUse }: {
-  template: typeof MOCK_TEMPLATES[0]
+  template: Template
   onClose: () => void
   onUse: () => void
 }) {
+  const issueTypes = template.config?.issueTypes ?? []
+  const customFields = template.config?.customFields ?? []
+  const workflowStatuses = template.config?.workflow?.statuses ?? []
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className="t-icon-lg">{template.icon}</div>
+            <div className="t-icon-lg">{template.icon || '📋'}</div>
             <div>
               <h2>{template.name}</h2>
               <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
@@ -87,26 +41,41 @@ function TemplateDetail({ template, onClose, onUse }: {
 
           <div className="detail-grid">
             <div className="detail-block">
-              <div className="detail-title">Issue types ({template.config.issueTypes.length})</div>
-              {template.config.issueTypes.map(it => (
-                <div key={it} className="detail-item"><Check size={11} style={{ color: 'var(--brand-light)' }} />{it}</div>
+              <div className="detail-title">Issue types ({issueTypes.length})</div>
+              {issueTypes.map(it => (
+                <div key={it.name} className="detail-item">
+                  <Check size={11} style={{ color: it.color || 'var(--brand-light)' }} />
+                  {it.icon} {it.name}
+                </div>
               ))}
+              {issueTypes.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Nenhum configurado</div>
+              )}
             </div>
             <div className="detail-block">
-              <div className="detail-title">Custom fields ({template.config.customFields.length})</div>
-              {template.config.customFields.map(f => (
-                <div key={f} className="detail-item"><Check size={11} style={{ color: 'var(--green)' }} />{f}</div>
+              <div className="detail-title">Custom fields ({customFields.length})</div>
+              {customFields.map(f => (
+                <div key={f.name} className="detail-item">
+                  <Check size={11} style={{ color: 'var(--green)' }} />
+                  {f.name} <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>({f.type}{f.required ? ', obrigatório' : ''})</span>
+                </div>
               ))}
+              {customFields.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Nenhum configurado</div>
+              )}
             </div>
             <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
               <div className="detail-title">Workflow — statuses</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 4 }}>
-                {template.config.workflow.map((s, i) => (
+                {workflowStatuses.map((s, i) => (
                   <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span className="wf-tag">{s}</span>
-                    {i < template.config.workflow.length - 1 && <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />}
+                    {i < workflowStatuses.length - 1 && <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />}
                   </div>
                 ))}
+                {workflowStatuses.length === 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Nenhum configurado</div>
+                )}
               </div>
             </div>
           </div>
@@ -121,15 +90,26 @@ function TemplateDetail({ template, onClose, onUse }: {
   )
 }
 
-function NewTemplateModal({ onClose }: { onClose: () => void }) {
+function NewTemplateModal({ onClose, onCreate }: {
+  onClose: () => void
+  onCreate: (data: { name: string; description: string; icon: string; tags: string[] }) => Promise<void>
+}) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', icon: '📋', tags: '' })
+  const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
     setSaving(true)
-    await new Promise(r => setTimeout(r, 800))
-    setSaving(false)
-    onClose()
+    setError(null)
+    try {
+      const tags = form.tags.split(',').map(t => t.trim()).filter(Boolean)
+      await onCreate({ name: form.name, description: form.description, icon: form.icon, tags })
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao criar template')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -142,7 +122,7 @@ function NewTemplateModal({ onClose }: { onClose: () => void }) {
         <div className="modal-body">
           <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr', gap: 12, marginBottom: 18 }}>
             <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Ícone</label>
+              <label className="form-label">Icone</label>
               <input type="text" value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} style={{ textAlign: 'center', fontSize: 20 }} />
             </div>
             <div className="form-group" style={{ margin: 0 }}>
@@ -151,23 +131,26 @@ function NewTemplateModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Descrição</label>
-            <textarea placeholder="Descreva quando usar este template…" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={{ height: 72 }} />
+            <label className="form-label">Descricao</label>
+            <textarea placeholder="Descreva quando usar este template..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={{ height: 72 }} />
           </div>
           <div className="form-group">
-            <label className="form-label">Tags <span style={{ color: 'var(--text-muted)' }}>(separadas por vírgula)</span></label>
+            <label className="form-label">Tags <span style={{ color: 'var(--text-muted)' }}>(separadas por virgula)</span></label>
             <input type="text" placeholder="Scrum, Premium, Enterprise" value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} />
           </div>
+          {error && (
+            <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 8 }}>{error}</div>
+          )}
           <div className="info-note">
             <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Após criar, você poderá configurar os issue types, custom fields e workflow dentro do template.
+              Apos criar, voce podera configurar os issue types, custom fields e workflow dentro do template.
             </span>
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={save} disabled={saving || !form.name}>
-            {saving ? <><Loader2 size={13} className="animate-spin" /> Criando…</> : 'Criar template'}
+            {saving ? <><Loader2 size={13} className="animate-spin" /> Criando...</> : 'Criar template'}
           </button>
         </div>
       </div>
@@ -176,24 +159,61 @@ function NewTemplateModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function TemplatesPage() {
+  const router = useRouter()
+  const { templates, loading, reload, createTemplate } = useTemplates()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'global' | 'custom'>('all')
-  const [detail, setDetail] = useState<typeof MOCK_TEMPLATES[0] | null>(null)
+  const [detail, setDetail] = useState<Template | null>(null)
   const [newOpen, setNewOpen] = useState(false)
 
-  const filtered = MOCK_TEMPLATES.filter(t => {
+  const filtered = templates.filter(t => {
     const matchSearch = t.name.toLowerCase().includes(search.toLowerCase()) ||
       t.tags.some(tag => tag.toLowerCase().includes(search.toLowerCase()))
     const matchFilter = filter === 'all' || (filter === 'global' ? t.is_global : !t.is_global)
     return matchSearch && matchFilter
   })
 
+  const handleCreate = async (data: { name: string; description: string; icon: string; tags: string[] }) => {
+    await createTemplate({
+      name: data.name,
+      description: data.description || undefined,
+      icon: data.icon || undefined,
+      is_global: true,
+      config: {
+        hierarchy: { levels: [], requiresPremium: false },
+        issueTypes: [],
+        customFields: [],
+        workflow: { statuses: [], transitions: [] },
+        automations: [],
+      },
+      tags: data.tags,
+      created_by: 'ntt-data-user',
+    })
+  }
+
+  if (loading) {
+    return (
+      <div className="templates-page">
+        <div className="page-header">
+          <div>
+            <h1>Templates</h1>
+            <p>Biblioteca global NTT DATA — reutilize configuracoes completas de projeto</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 80 }}>
+          <Loader2 size={28} className="animate-spin" style={{ color: 'var(--brand)' }} />
+          <span style={{ marginLeft: 12, color: 'var(--text-muted)' }}>Carregando templates...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="templates-page">
       <div className="page-header">
         <div>
           <h1>Templates</h1>
-          <p>Biblioteca global NTT DATA — reutilize configurações completas de projeto</p>
+          <p>Biblioteca global NTT DATA — reutilize configuracoes completas de projeto</p>
         </div>
         <button className="btn btn-primary" onClick={() => setNewOpen(true)}>
           <Plus size={14} /> Novo template
@@ -203,7 +223,7 @@ export default function TemplatesPage() {
       <div className="toolbar">
         <div className="search-input" style={{ maxWidth: 320 }}>
           <Search size={14} className="search-icon" />
-          <input type="text" placeholder="Buscar templates…" value={search} onChange={e => setSearch(e.target.value)} />
+          <input type="text" placeholder="Buscar templates..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <div className="filter-tabs">
           {(['all', 'global', 'custom'] as const).map(f => (
@@ -215,41 +235,47 @@ export default function TemplatesPage() {
       </div>
 
       <div className="templates-grid">
-        {filtered.map(t => (
-          <div key={t.id} className="template-card card card-hover" onClick={() => setDetail(t)}>
-            <div className="tc-header">
-              <div className="tc-icon">{t.icon}</div>
-              <div className="tc-badges">
-                {t.is_global
-                  ? <span className="badge badge-blue"><Globe size={9} /> Global</span>
-                  : <span className="badge badge-muted"><Lock size={9} /> Privado</span>
-                }
-                {t.used_count > 0 && (
-                  <span className="badge badge-brand"><Star size={9} /> {t.used_count}x</span>
-                )}
+        {filtered.map(t => {
+          const issueTypes = t.config?.issueTypes ?? []
+          const customFields = t.config?.customFields ?? []
+          const workflowStatuses = t.config?.workflow?.statuses ?? []
+
+          return (
+            <div key={t.id} className="template-card card card-hover" onClick={() => setDetail(t)}>
+              <div className="tc-header">
+                <div className="tc-icon">{t.icon || '📋'}</div>
+                <div className="tc-badges">
+                  {t.is_global
+                    ? <span className="badge badge-blue"><Globe size={9} /> Global</span>
+                    : <span className="badge badge-muted"><Lock size={9} /> Privado</span>
+                  }
+                  {t.used_count > 0 && (
+                    <span className="badge badge-brand"><Star size={9} /> {t.used_count}x</span>
+                  )}
+                </div>
+              </div>
+              <div className="tc-name">{t.name}</div>
+              <div className="tc-desc">{t.description}</div>
+              <div className="tc-tags">
+                {t.tags.map(tag => <span key={tag} className="badge badge-muted">{tag}</span>)}
+              </div>
+              <div className="tc-summary">
+                <span><BookOpen size={11} /> {issueTypes.length} types</span>
+                <span><Tag size={11} /> {customFields.length} fields</span>
+                <span>{workflowStatuses.length} statuses</span>
+              </div>
+              <div className="tc-actions" onClick={e => e.stopPropagation()}>
+                <button className="btn btn-sm btn-ghost"><Edit3 size={12} /></button>
+                <button className="btn btn-sm btn-ghost"><Copy size={12} /></button>
+                <button className="btn btn-sm btn-ghost"><Trash2 size={12} style={{ color: 'var(--red)' }} /></button>
+                <button className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }}
+                  onClick={() => setDetail(t)}>
+                  Ver <ChevronRight size={12} />
+                </button>
               </div>
             </div>
-            <div className="tc-name">{t.name}</div>
-            <div className="tc-desc">{t.description}</div>
-            <div className="tc-tags">
-              {t.tags.map(tag => <span key={tag} className="badge badge-muted">{tag}</span>)}
-            </div>
-            <div className="tc-summary">
-              <span><BookOpen size={11} /> {t.config.issueTypes.length} types</span>
-              <span><Tag size={11} /> {t.config.customFields.length} fields</span>
-              <span>{t.config.workflow.length} statuses</span>
-            </div>
-            <div className="tc-actions" onClick={e => e.stopPropagation()}>
-              <button className="btn btn-sm btn-ghost"><Edit3 size={12} /></button>
-              <button className="btn btn-sm btn-ghost"><Copy size={12} /></button>
-              <button className="btn btn-sm btn-ghost"><Trash2 size={12} style={{ color: 'var(--red)' }} /></button>
-              <button className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }}
-                onClick={() => setDetail(t)}>
-                Ver <ChevronRight size={12} />
-              </button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
 
         <div className="template-card card new-card" onClick={() => setNewOpen(true)}>
           <div className="new-card-inner">
@@ -264,10 +290,10 @@ export default function TemplatesPage() {
         <TemplateDetail
           template={detail}
           onClose={() => setDetail(null)}
-          onUse={() => { setDetail(null); window.location.href = '/builder' }}
+          onUse={() => { setDetail(null); router.push(`/builder?template=${detail.id}`) }}
         />
       )}
-      {newOpen && <NewTemplateModal onClose={() => setNewOpen(false)} />}
+      {newOpen && <NewTemplateModal onClose={() => setNewOpen(false)} onCreate={handleCreate} />}
 
     </div>
   )

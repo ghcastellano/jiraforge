@@ -1,53 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Building2, Plus, Search, MoreHorizontal, CheckCircle2,
   XCircle, Clock, Wifi, WifiOff, Trash2, Edit3,
   ExternalLink, Key, Globe, AlertCircle, Loader2,
   ChevronDown, ChevronRight, FolderKanban, Zap, Copy
 } from 'lucide-react'
+import { useTenants, useConnections } from '@/hooks'
+import type { Tenant, JiraConnection, CreateConnectionInput } from '@/types'
 
-// ─── Mock data ────────────────────────────────────────────
-
-const MOCK_TENANTS = [
-  {
-    id: '1', name: 'Avangrid', slug: 'avangrid',
-    description: 'US energy company — Scrum + Advanced Roadmaps',
-    active: true, projects_count: 4, active_rules_count: 3,
-    connections: [
-      {
-        id: 'c1', name: 'Avangrid Production', jira_base_url: 'https://avangrid.atlassian.net',
-        auth_type: 'api_token', status: 'active', is_premium: true,
-        last_checked_at: '2025-03-19T14:30:00Z',
-      },
-    ],
-  },
-  {
-    id: '2', name: 'Santander', slug: 'santander',
-    description: 'Banking group — multi-team Kanban + SAFe',
-    active: true, projects_count: 2, active_rules_count: 1,
-    connections: [
-      {
-        id: 'c2', name: 'Santander BR', jira_base_url: 'https://santander-br.atlassian.net',
-        auth_type: 'oauth', status: 'active', is_premium: false,
-        last_checked_at: '2025-03-20T08:00:00Z',
-      },
-      {
-        id: 'c3', name: 'Santander ES', jira_base_url: 'https://santander-es.atlassian.net',
-        auth_type: 'api_token', status: 'error', is_premium: false,
-        last_checked_at: '2025-03-18T10:00:00Z',
-        last_error: 'Token expirado — gere um novo API token',
-      },
-    ],
-  },
-  {
-    id: '3', name: 'Cliente Novo', slug: 'cliente-novo',
-    description: null,
-    active: true, projects_count: 0, active_rules_count: 0,
-    connections: [],
-  },
-]
+// ─── Status config ───────────────────────────────────────
 
 const STATUS_CONFIG = {
   active:  { label: 'Ativo',    icon: CheckCircle2, cls: 'badge-green' },
@@ -74,18 +37,31 @@ function ConnectionCard({
   onCheck,
   onDelete,
 }: {
-  conn: (typeof MOCK_TENANTS)[0]['connections'][0]
+  conn: JiraConnection
   onCheck: (id: string) => void
   onDelete: (id: string) => void
 }) {
   const [checking, setChecking] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const handleCheck = async () => {
     setChecking(true)
-    await new Promise(r => setTimeout(r, 1400))
-    setChecking(false)
-    onCheck(conn.id)
+    try {
+      await onCheck(conn.id)
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await onDelete(conn.id)
+    } finally {
+      setDeleting(false)
+      setMenuOpen(false)
+    }
   }
 
   return (
@@ -136,8 +112,11 @@ function ConnectionCard({
                 <ExternalLink size={13} /> Abrir Jira
               </button>
               <div className="dropdown-divider" />
-              <button className="dropdown-item danger" onClick={() => onDelete(conn.id)}>
-                <Trash2 size={13} /> Remover
+              <button className="dropdown-item danger" onClick={handleDelete} disabled={deleting}>
+                {deleting
+                  ? <><Loader2 size={13} className="animate-spin" /> Removendo…</>
+                  : <><Trash2 size={13} /> Remover</>
+                }
               </button>
             </div>
           )}
@@ -151,12 +130,30 @@ function TenantRow({
   tenant,
   onAddConnection,
 }: {
-  tenant: typeof MOCK_TENANTS[0]
+  tenant: Tenant
   onAddConnection: (tenantId: string) => void
 }) {
-  const [expanded, setExpanded] = useState(tenant.connections.length > 0)
-  const [connections, setConnections] = useState(tenant.connections)
+  const [expanded, setExpanded] = useState(false)
+  const { connections, loading, reload, checkConnection, deleteConnection } = useConnections(expanded ? tenant.id : null)
+
   const activeConns = connections.filter(c => c.status === 'active').length
+  const connCount = tenant.connections_count ?? connections.length
+
+  // Auto-expand if tenant has connections
+  useEffect(() => {
+    if ((tenant.connections_count ?? 0) > 0 && !expanded) {
+      setExpanded(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleCheck = async (id: string) => {
+    await checkConnection(id)
+  }
+
+  const handleDelete = async (id: string) => {
+    await deleteConnection(id)
+  }
 
   return (
     <div className="tenant-row animate-in">
@@ -178,15 +175,15 @@ function TenantRow({
         <div className="tenant-stats">
           <div className="stat">
             <FolderKanban size={13} />
-            <span>{tenant.projects_count} projetos</span>
+            <span>{tenant.projects_count ?? 0} projetos</span>
           </div>
           <div className="stat">
             <Zap size={13} />
-            <span>{tenant.active_rules_count} regras</span>
+            <span>{tenant.active_rules_count ?? 0} regras</span>
           </div>
           <div className="stat">
-            {activeConns > 0
-              ? <><Wifi size={13} style={{ color: 'var(--green)' }} /><span style={{ color: 'var(--green)' }}>{activeConns} conexão{activeConns !== 1 ? 'ões' : ''}</span></>
+            {(expanded ? activeConns : connCount) > 0
+              ? <><Wifi size={13} style={{ color: 'var(--green)' }} /><span style={{ color: 'var(--green)' }}>{expanded ? activeConns : connCount} conexão{(expanded ? activeConns : connCount) !== 1 ? 'ões' : ''}</span></>
               : <><WifiOff size={13} /><span>sem conexão</span></>
             }
           </div>
@@ -201,7 +198,12 @@ function TenantRow({
 
       {expanded && (
         <div className="tenant-connections">
-          {connections.length === 0 ? (
+          {loading ? (
+            <div className="conn-empty">
+              <Loader2 size={18} className="animate-spin" />
+              <span>Carregando conexões…</span>
+            </div>
+          ) : connections.length === 0 ? (
             <div className="conn-empty">
               <WifiOff size={18} />
               <span>Nenhuma conexão Jira. Adicione uma para poder criar projetos.</span>
@@ -214,8 +216,8 @@ function TenantRow({
               <ConnectionCard
                 key={c.id}
                 conn={c}
-                onCheck={() => {}}
-                onDelete={id => setConnections(cs => cs.filter(x => x.id !== id))}
+                onCheck={handleCheck}
+                onDelete={handleDelete}
               />
             ))
           )}
@@ -236,21 +238,37 @@ function AddConnectionModal({
   tenantId: string
   tenantName: string
   onClose: () => void
-  onSave: (data: object) => void
+  onSave: (data: CreateConnectionInput) => Promise<void>
 }) {
   const [authType, setAuthType] = useState<'api_token' | 'oauth'>('api_token')
   const [form, setForm] = useState({ name: '', jira_base_url: '', email: '', token: '' })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handle = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
 
   const submit = async () => {
     setSaving(true)
-    await new Promise(r => setTimeout(r, 800))
-    onSave({ ...form, auth_type: authType, tenant_id: tenantId })
-    setSaving(false)
-    onClose()
+    setError(null)
+    try {
+      const payload: CreateConnectionInput = {
+        tenant_id: tenantId,
+        name: form.name,
+        jira_base_url: form.jira_base_url,
+        auth_type: authType,
+      }
+      if (authType === 'api_token') {
+        payload.jira_email = form.email
+        payload.api_token = form.token
+      }
+      await onSave(payload)
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao salvar conexão')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -267,6 +285,13 @@ function AddConnectionModal({
         </div>
 
         <div className="modal-body">
+          {error && (
+            <div className="conn-error" style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6 }}>
+              <AlertCircle size={13} />
+              {error}
+            </div>
+          )}
+
           <div className="form-group">
             <label className="form-label">Nome da conexão</label>
             <input type="text" placeholder="ex: Avangrid Production" value={form.name} onChange={handle('name')} />
@@ -339,9 +364,24 @@ function AddConnectionModal({
 
 // ─── Add Tenant Modal ──────────────────────────────────────
 
-function AddTenantModal({ onClose, onSave }: { onClose: () => void; onSave: (t: object) => void }) {
+function AddTenantModal({ onClose, onSave }: { onClose: () => void; onSave: (payload: { name: string; slug: string; description?: string }) => Promise<void> }) {
   const [form, setForm] = useState({ name: '', description: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const slug = form.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+
+  const submit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave({ name: form.name, slug, description: form.description || undefined })
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao criar cliente')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -351,6 +391,13 @@ function AddTenantModal({ onClose, onSave }: { onClose: () => void; onSave: (t: 
           <button className="btn btn-icon btn-ghost" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          {error && (
+            <div className="conn-error" style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6 }}>
+              <AlertCircle size={13} />
+              {error}
+            </div>
+          )}
+
           <div className="form-group">
             <label className="form-label">Nome do cliente</label>
             <input
@@ -379,10 +426,10 @@ function AddTenantModal({ onClose, onSave }: { onClose: () => void; onSave: (t: 
           <button className="btn" onClick={onClose}>Cancelar</button>
           <button
             className="btn btn-primary"
-            disabled={!form.name}
-            onClick={() => { onSave({ ...form, slug }); onClose() }}
+            disabled={!form.name || saving}
+            onClick={submit}
           >
-            Criar cliente
+            {saving ? <><Loader2 size={13} className="animate-spin" /> Criando…</> : 'Criar cliente'}
           </button>
         </div>
       </div>
@@ -393,15 +440,70 @@ function AddTenantModal({ onClose, onSave }: { onClose: () => void; onSave: (t: 
 // ─── Page ─────────────────────────────────────────────────
 
 export default function ClientsPage() {
-  const [tenants, setTenants] = useState(MOCK_TENANTS)
+  const { tenants, loading, error, reload, createTenant } = useTenants()
   const [search, setSearch] = useState('')
   const [addTenantOpen, setAddTenantOpen] = useState(false)
   const [addConnModal, setAddConnModal] = useState<{ tenantId: string; tenantName: string } | null>(null)
+
+  // For stats, we use the connections hook for the currently-selected tenant in the modal,
+  // but stats are computed from tenant-level counts returned by the API
+  const totalConnections = tenants.reduce((sum, t) => sum + (t.connections_count ?? 0), 0)
 
   const filtered = tenants.filter(t =>
     t.name.toLowerCase().includes(search.toLowerCase()) ||
     (t.description ?? '').toLowerCase().includes(search.toLowerCase())
   )
+
+  // Connection creation handler - uses a temporary hook-like pattern
+  const handleCreateConnection = async (payload: CreateConnectionInput) => {
+    const res = await fetch('/api/connections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error ?? 'Erro ao criar conexão')
+    // Reload tenants to update counts
+    reload()
+  }
+
+  if (loading) {
+    return (
+      <div className="clients-page">
+        <div className="page-header">
+          <div>
+            <h1>Clientes</h1>
+            <p>Gerencie os tenants e suas conexões com o Jira Cloud</p>
+          </div>
+        </div>
+        <div className="empty-state">
+          <Loader2 size={24} className="animate-spin" />
+          <div className="empty-title">Carregando clientes…</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="clients-page">
+        <div className="page-header">
+          <div>
+            <h1>Clientes</h1>
+            <p>Gerencie os tenants e suas conexões com o Jira Cloud</p>
+          </div>
+        </div>
+        <div className="empty-state">
+          <div className="empty-icon"><AlertCircle size={20} /></div>
+          <div className="empty-title">Erro ao carregar clientes</div>
+          <div className="empty-desc">{error}</div>
+          <button className="btn btn-primary" onClick={reload}>
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="clients-page">
@@ -423,20 +525,20 @@ export default function ClientsPage() {
           <span className="stat-label">Clientes</span>
         </div>
         <div className="stat-card">
-          <span className="stat-value">{tenants.flatMap(t => t.connections).length}</span>
+          <span className="stat-value">{totalConnections}</span>
           <span className="stat-label">Conexões Jira</span>
         </div>
         <div className="stat-card">
-          <span className="stat-value" style={{ color: 'var(--green)' }}>
-            {tenants.flatMap(t => t.connections).filter(c => c.status === 'active').length}
+          <span className="stat-value">
+            {tenants.reduce((sum, t) => sum + (t.projects_count ?? 0), 0)}
           </span>
-          <span className="stat-label">Ativas</span>
+          <span className="stat-label">Projetos</span>
         </div>
         <div className="stat-card">
-          <span className="stat-value" style={{ color: 'var(--red)' }}>
-            {tenants.flatMap(t => t.connections).filter(c => c.status === 'error').length}
+          <span className="stat-value">
+            {tenants.reduce((sum, t) => sum + (t.active_rules_count ?? 0), 0)}
           </span>
-          <span className="stat-label">Com erro</span>
+          <span className="stat-label">Regras ativas</span>
         </div>
       </div>
 
@@ -477,12 +579,8 @@ export default function ClientsPage() {
       {addTenantOpen && (
         <AddTenantModal
           onClose={() => setAddTenantOpen(false)}
-          onSave={(data) => {
-            const d = data as { name: string; slug: string; description: string }
-            setTenants(ts => [...ts, {
-              id: String(Date.now()), ...d, active: true,
-              projects_count: 0, active_rules_count: 0, connections: [],
-            }])
+          onSave={async (payload) => {
+            await createTenant(payload)
           }}
         />
       )}
@@ -492,7 +590,7 @@ export default function ClientsPage() {
           tenantId={addConnModal.tenantId}
           tenantName={addConnModal.tenantName}
           onClose={() => setAddConnModal(null)}
-          onSave={() => {}}
+          onSave={handleCreateConnection}
         />
       )}
 
