@@ -154,7 +154,7 @@ describe('useConnections', () => {
       await result.current.deleteConnection('c1')
     })
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/connections/c1', { method: 'DELETE' })
+    expect(mockFetch).toHaveBeenCalledWith('/api/connections/c1?tenant_id=t1', { method: 'DELETE' })
     expect(result.current.connections).toHaveLength(1)
     expect(result.current.connections[0].id).toBe('c2')
   })

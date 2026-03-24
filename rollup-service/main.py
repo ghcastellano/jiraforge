@@ -12,7 +12,7 @@ import hashlib
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
@@ -147,7 +147,7 @@ async def check_and_rollup(
     trigger_issue: str,
 ) -> dict:
     """Core roll-up: if all children are done, move parent to done"""
-    start = datetime.utcnow()
+    start = datetime.now(tz=timezone.utc)
 
     children = await get_issue_children(base_url, auth_headers, parent_key)
 
@@ -174,7 +174,7 @@ async def check_and_rollup(
         return {"result": "error", "reason": "No 'Done' transition found on parent", "parent": parent_key}
 
     success = await transition_issue(base_url, auth_headers, parent_key, transition_id)
-    duration_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
+    duration_ms = int((datetime.now(tz=timezone.utc) - start).total_seconds() * 1000)
 
     result = "rolled_up" if success else "error"
     details = {
@@ -296,7 +296,7 @@ async def handle_webhook(
                 "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
                 "Content-Type": "application/json",
             },
-            json={"last_triggered_at": datetime.utcnow().isoformat(), "trigger_count": rule.get("trigger_count", 0) + 1},
+            json={"last_triggered_at": datetime.now(tz=timezone.utc).isoformat(), "trigger_count": rule.get("trigger_count", 0) + 1},
         )
 
     return {"status": "processed", "results": results}

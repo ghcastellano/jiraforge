@@ -84,7 +84,7 @@ export function useConnections(tenantId: string | null) {
   }
 
   const deleteConnection = async (id: string) => {
-    await fetch(`/api/connections/${id}`, { method: 'DELETE' })
+    await fetch(`/api/connections/${id}?tenant_id=${tenantId}`, { method: 'DELETE' })
     setConnections(cs => cs.filter(c => c.id !== id))
   }
 
@@ -129,7 +129,65 @@ export function useTemplates() {
     return json.data as Template
   }
 
-  return { templates, loading, reload: load, createTemplate }
+  const updateTemplate = async (id: string, payload: Partial<Template>) => {
+    const res = await fetch(`/api/templates/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error)
+    setTemplates(ts => ts.map(t => t.id === id ? json.data : t))
+    return json.data as Template
+  }
+
+  const deleteTemplate = async (id: string) => {
+    const res = await fetch(`/api/templates/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const json = await res.json()
+      throw new Error(json.error)
+    }
+    setTemplates(ts => ts.filter(t => t.id !== id))
+  }
+
+  const duplicateTemplate = async (id: string, overrides?: { name?: string; is_global?: boolean; tenant_id?: string; created_by?: string }) => {
+    const res = await fetch(`/api/templates/${id}/duplicate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(overrides ?? {}),
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error)
+    setTemplates(ts => [...ts, json.data])
+    return json.data as Template
+  }
+
+  return { templates, loading, reload: load, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate }
+}
+
+// ─── useTemplate (single) ────────────────────────────────
+export function useTemplate(id: string | null) {
+  const [template, setTemplate] = useState<Template | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (!id) return
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await fetcher<Template>(`/api/templates/${id}`)
+      setTemplate(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao carregar template')
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => { load() }, [load])
+
+  return { template, loading, error, reload: load }
 }
 
 // ─── useProjects ──────────────────────────────────────────

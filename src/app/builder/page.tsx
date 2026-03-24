@@ -2,15 +2,16 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import {
-  Check, ChevronRight, Plus, Trash2, GripVertical,
-  Loader2, Zap, AlertTriangle, ExternalLink, RefreshCw,
-  ArrowLeft, Rocket, Shield
+  Check, ChevronRight, ChevronDown, Plus, Loader2, Zap,
+  AlertTriangle, ExternalLink, RefreshCw, ArrowLeft, Rocket,
+  Shield, Eye, Pencil,
 } from 'lucide-react'
 import { useTenants, useConnections, useTemplates } from '@/hooks'
 import type {
-  Template, IssueTypeConfig, CustomFieldConfig,
-  WorkflowStatus, WorkflowTransition,
+  Template, TemplateConfig, IssueTypeConfig, CustomFieldConfig,
+  WorkflowTransition,
 } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────
@@ -18,13 +19,10 @@ import type {
 type Step = { key: string; label: string }
 
 const STEPS: Step[] = [
-  { key: 'template',    label: 'Template'    },
-  { key: 'project',     label: 'Projeto'     },
-  { key: 'issuetypes',  label: 'Issue Types' },
-  { key: 'fields',      label: 'Fields'      },
-  { key: 'workflow',    label: 'Workflow'     },
-  { key: 'schemes',     label: 'Schemes'     },
-  { key: 'review',      label: 'Review'      },
+  { key: 'template', label: 'Template' },
+  { key: 'client',   label: 'Cliente'  },
+  { key: 'review',   label: 'Revisar'  },
+  { key: 'deploy',   label: 'Deploy'   },
 ]
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -83,9 +81,75 @@ function StepIndicator({ steps, current }: { steps: Step[]; current: number }) {
   )
 }
 
-// ─── Step 1: Template ─────────────────────────────────────
+// ─── Section Toggle (for review/customize) ───────────────
 
-function StepTemplate({
+function SectionToggle({
+  title,
+  count,
+  customizing,
+  onToggle,
+  readOnlyContent,
+  editContent,
+}: {
+  title: string
+  count?: number
+  customizing: boolean
+  onToggle: (v: boolean) => void
+  readOnlyContent: React.ReactNode
+  editContent: React.ReactNode
+}) {
+  const [expanded, setExpanded] = useState(true)
+
+  return (
+    <div style={{
+      border: '1px solid var(--border)',
+      borderRadius: 10,
+      marginBottom: 12,
+      overflow: 'hidden',
+    }}>
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '12px 16px',
+          background: 'var(--bg-overlay)',
+          cursor: 'pointer',
+        }}
+        onClick={() => setExpanded(!expanded)}
+      >
+        <ChevronDown
+          size={14}
+          style={{
+            color: 'var(--text-muted)',
+            transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+            transition: 'transform 0.15s',
+          }}
+        />
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
+          {title}
+          {count !== undefined && (
+            <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 6 }}>({count})</span>
+          )}
+        </span>
+        <button
+          className={`btn btn-sm ${customizing ? 'btn-primary' : ''}`}
+          onClick={(e) => { e.stopPropagation(); onToggle(!customizing) }}
+          style={{ fontSize: 11, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          {customizing ? <><Pencil size={10} /> Customizando</> : <><Eye size={10} /> Template</>}
+        </button>
+      </div>
+      {expanded && (
+        <div style={{ padding: '12px 16px' }}>
+          {customizing ? editContent : readOnlyContent}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Step 1: Selecionar Template ─────────────────────────
+
+function StepSelectTemplate({
   selected,
   onSelect,
   templates,
@@ -100,7 +164,7 @@ function StepTemplate({
     return (
       <div className="step-content">
         <div className="step-header">
-          <h3>Escolha um template</h3>
+          <h3>Selecionar template</h3>
           <p>Carregando templates...</p>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
@@ -112,13 +176,20 @@ function StepTemplate({
 
   return (
     <div className="step-content">
-      <div className="step-header">
-        <h3>Escolha um template</h3>
-        <p>Ponto de partida — tudo pode ser customizado nos proximos steps</p>
+      <div className="step-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h3>Selecionar template</h3>
+          <p>Reutilize um template existente — tudo pode ser ajustado no passo de revisao</p>
+        </div>
+        <Link href="/templates/new" className="btn btn-sm" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={12} /> Criar novo template
+        </Link>
       </div>
       <div className="template-grid">
         {templates.map(t => {
           const isPremium = t.config?.hierarchy?.requiresPremium
+          const issueCount = t.config?.issueTypes?.length ?? 0
+          const fieldCount = t.config?.customFields?.length ?? 0
           return (
             <div
               key={t.id}
@@ -128,6 +199,9 @@ function StepTemplate({
               <div className="template-icon">{t.icon || '📋'}</div>
               <div className="template-name">{t.name}</div>
               <div className="template-desc">{t.description || ''}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+                {issueCount} issue type{issueCount !== 1 ? 's' : ''} · {fieldCount} campo{fieldCount !== 1 ? 's' : ''}
+              </div>
               <div className="template-tags">
                 {t.tags.map(tag => (
                   <span key={tag} className="badge badge-muted">{tag}</span>
@@ -143,41 +217,37 @@ function StepTemplate({
       </div>
       {templates.length === 0 && (
         <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 13 }}>
-          Nenhum template encontrado. Crie um na pagina de Templates.
+          Nenhum template encontrado. <Link href="/templates/new" style={{ color: 'var(--brand-light)' }}>Crie um template</Link> para comecar.
         </div>
       )}
     </div>
   )
 }
 
-// ─── Step 2: Project ──────────────────────────────────────
+// ─── Step 2: Selecionar Cliente & Conexao ────────────────
 
-function StepProject({
+function StepClientConnection({
   form,
   onChange,
   tenants,
   tenantsLoading,
   connections,
   connectionsLoading,
-  enableAdvancedRoadmaps,
-  onToggleAdvancedRoadmaps,
 }: {
-  form: Record<string, string>
+  form: { tenant_id: string; connection_id: string; project_name: string; project_key: string; description: string }
   onChange: (k: string, v: string) => void
   tenants: { id: string; name: string }[]
   tenantsLoading: boolean
-  connections: { id: string; name: string; jira_base_url: string; is_premium: boolean }[]
+  connections: { id: string; name: string; jira_base_url: string; is_premium: boolean; status: string }[]
   connectionsLoading: boolean
-  enableAdvancedRoadmaps: boolean
-  onToggleAdvancedRoadmaps: (v: boolean) => void
 }) {
   const selectedConnection = connections.find(c => c.id === form.connection_id)
 
   return (
     <div className="step-content">
       <div className="step-header">
-        <h3>Dados do projeto</h3>
-        <p>Informacoes basicas que serao enviadas para o Jira</p>
+        <h3>Cliente &amp; Conexao</h3>
+        <p>Selecione o cliente e a conexao Jira onde o projeto sera criado</p>
       </div>
 
       <div className="form-row">
@@ -204,10 +274,24 @@ function StepProject({
               </option>
             ))}
           </select>
-          {selectedConnection && !selectedConnection.is_premium && enableAdvancedRoadmaps && (
-            <span className="form-hint" style={{ color: 'var(--red)' }}>
-              Advanced Roadmaps requer Jira Premium
-            </span>
+          {selectedConnection && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: 4,
+                background: selectedConnection.status === 'active' ? 'var(--green)' :
+                             selectedConnection.status === 'error' ? 'var(--red)' : 'var(--text-muted)',
+              }} />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                {selectedConnection.status === 'active' ? 'Conectado' :
+                 selectedConnection.status === 'error' ? 'Erro de conexao' :
+                 selectedConnection.status === 'expired' ? 'Token expirado' : 'Pendente'}
+              </span>
+              {selectedConnection.is_premium && (
+                <span className="badge badge-amber" style={{ fontSize: 10, padding: '1px 6px' }}>
+                  <Shield size={9} style={{ marginRight: 2 }} /> Premium
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -234,331 +318,305 @@ function StepProject({
           <span className="form-hint">Max. 10 chars, maiusculas, sem espacos</span>
         </div>
         <div className="form-group">
-          <label className="form-label">Tipo de projeto</label>
-          <div
-            className={`scheme-row ${enableAdvancedRoadmaps ? 'selected' : ''}`}
-            onClick={() => onToggleAdvancedRoadmaps(!enableAdvancedRoadmaps)}
-            style={{
-              cursor: 'pointer',
-              padding: '10px 14px',
-              border: enableAdvancedRoadmaps ? '1px solid var(--brand-light)' : '1px solid var(--border)',
-              borderRadius: 8,
-              background: enableAdvancedRoadmaps ? 'var(--brand-light)08' : 'transparent',
+          <label className="form-label">Descricao <span style={{ color: 'var(--text-muted)' }}>(opcional)</span></label>
+          <input
+            type="text"
+            placeholder="Breve descricao do projeto"
+            value={form.description}
+            onChange={e => onChange('description', e.target.value)}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Step 3: Revisar & Customizar ────────────────────────
+
+function StepReviewCustomize({
+  template,
+  overrides,
+  customizing,
+  setCustomizing,
+  setOverrides,
+}: {
+  template: Template
+  overrides: TemplateOverrides
+  customizing: Record<string, boolean>
+  setCustomizing: (s: Record<string, boolean>) => void
+  setOverrides: (o: TemplateOverrides) => void
+}) {
+  const cfg = template.config
+
+  // ── Hierarchy (read-only always from template) ──
+  const hierarchyContent = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {cfg.hierarchy.levels.map((level, i, arr) => (
+        <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="hier-pill">{level}</span>
+          {i < arr.length - 1 && <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />}
+        </div>
+      ))}
+      {cfg.hierarchy.requiresPremium && (
+        <span className="badge badge-amber" style={{ marginLeft: 8, fontSize: 10 }}>
+          <Shield size={9} /> Premium
+        </span>
+      )}
+    </div>
+  )
+
+  // ── Issue Types ──
+  const issueTypesData = customizing.issueTypes ? overrides.issueTypes : cfg.issueTypes
+  const issueTypesReadOnly = (
+    <div className="list-section">
+      {cfg.issueTypes.map((it, i) => (
+        <div key={i} className="list-row">
+          <div className="it-icon" style={{ background: it.color + '22', border: `1px solid ${it.color}44` }}>
+            <span style={{ fontSize: 14 }}>{it.icon}</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{it.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Nivel {it.level}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+  const issueTypesEdit = (
+    <div className="list-section">
+      {overrides.issueTypes.map((it, idx) => (
+        <div key={idx} className="list-row">
+          <div className="it-icon" style={{ background: it.color + '22', border: `1px solid ${it.color}44` }}>
+            <span style={{ fontSize: 14 }}>{it.icon}</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <input
+              type="text" value={it.name}
+              onChange={e => {
+                const next = [...overrides.issueTypes]
+                next[idx] = { ...next[idx], name: e.target.value }
+                setOverrides({ ...overrides, issueTypes: next })
+              }}
+              style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', background: 'transparent', border: 'none', padding: 0, outline: 'none', width: '100%' }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              Nivel
+              <select
+                value={it.level}
+                onChange={e => {
+                  const next = [...overrides.issueTypes]
+                  next[idx] = { ...next[idx], level: parseInt(e.target.value) }
+                  setOverrides({ ...overrides, issueTypes: next })
+                }}
+                style={{ fontSize: 11, padding: '1px 4px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-muted)' }}
+              >
+                {[0, 1, 2, 3].map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+          <button
+            className="btn btn-icon btn-sm btn-ghost"
+            onClick={() => {
+              const next = overrides.issueTypes.filter((_, i) => i !== idx)
+              setOverrides({ ...overrides, issueTypes: next })
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Shield size={16} style={{ color: enableAdvancedRoadmaps ? 'var(--brand-light)' : 'var(--text-muted)' }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
-                  Advanced Roadmaps (Premium)
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  Hierarquia 3 niveis com Scrum
-                </div>
-              </div>
-              <div style={{
-                width: 18, height: 18, borderRadius: 4,
-                border: enableAdvancedRoadmaps ? '2px solid var(--brand-light)' : '2px solid var(--border)',
-                background: enableAdvancedRoadmaps ? 'var(--brand-light)' : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {enableAdvancedRoadmaps && <Check size={11} style={{ color: '#fff' }} />}
-              </div>
+            <span style={{ color: 'var(--red)', fontSize: 12 }}>x</span>
+          </button>
+        </div>
+      ))}
+      <button
+        className="btn btn-sm"
+        style={{ marginTop: 8 }}
+        onClick={() => setOverrides({
+          ...overrides,
+          issueTypes: [...overrides.issueTypes, { name: 'Novo tipo', level: 0, color: '#6366f1', icon: '📌' }],
+        })}
+      >
+        <Plus size={12} /> Adicionar
+      </button>
+    </div>
+  )
+
+  // ── Custom Fields ──
+  const fieldsReadOnly = (
+    <div className="list-section">
+      {cfg.customFields.map((f, i) => (
+        <div key={i} className="list-row">
+          <div style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--bg-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 13 }}>{FIELD_TYPE_ICONS[f.type] ?? '📝'}</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
+              {f.name} {f.required && <span style={{ color: 'var(--red)', fontSize: 11 }}>*</span>}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {FIELD_TYPE_LABELS[f.type] || f.type} · Escopo: {f.scope.length > 0 ? f.scope.join(', ') : 'Todos'}
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="form-group">
-        <label className="form-label">Descricao <span style={{ color: 'var(--text-muted)' }}>(opcional)</span></label>
-        <textarea
-          placeholder="Breve descricao do projeto"
-          value={form.description}
-          onChange={e => onChange('description', e.target.value)}
-          style={{ height: 72 }}
-        />
-      </div>
-
-      {enableAdvancedRoadmaps && (
-        <div className="form-group">
-          <label className="form-label">Hierarquia (Advanced Roadmaps)</label>
-          <div className="hierarchy-row">
-            {['Iniciativa', 'Epico', 'US / Bug', 'Subtask'].map((level, i, arr) => (
-              <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="hier-pill">{level}</span>
-                {i < arr.length - 1 && <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />}
-              </div>
-            ))}
-          </div>
+      ))}
+      {cfg.customFields.length === 0 && (
+        <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+          Nenhum campo customizado no template.
         </div>
       )}
     </div>
   )
-}
-
-// ─── Step 3: Issue Types ──────────────────────────────────
-
-function StepIssueTypes({ types, setTypes }: {
-  types: (IssueTypeConfig & { id: string })[]
-  setTypes: (t: (IssueTypeConfig & { id: string })[]) => void
-}) {
-  const addIssueType = () => {
-    setTypes([...types, {
-      id: generateId(),
-      name: 'Novo tipo',
-      level: 0,
-      color: '#6366f1',
-      icon: '📌',
-    }])
-  }
-
-  const removeIssueType = (id: string) => {
-    setTypes(types.filter(t => t.id !== id))
-  }
-
-  const updateIssueType = (id: string, field: string, value: string | number) => {
-    setTypes(types.map(t => t.id === id ? { ...t, [field]: value } : t))
-  }
-
-  const levelLabel = (level: number) => {
-    if (level >= 3) return 'Roadmaps'
-    if (level === 0) return 'Sistema'
-    return 'Padrao'
-  }
-
-  return (
-    <div className="step-content">
-      <div className="step-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h3>Issue types</h3>
-          <p>Hierarquia completa para Advanced Roadmaps</p>
-        </div>
-        <button className="btn btn-sm btn-primary" onClick={addIssueType}>
-          <Plus size={12} /> Adicionar
-        </button>
-      </div>
-
-      <div className="list-section">
-        {types.map((it) => (
-          <div key={it.id} className="list-row">
-            <GripVertical size={14} style={{ color: 'var(--text-muted)', cursor: 'grab', flexShrink: 0 }} />
-            <div className="it-icon" style={{ background: it.color + '22', border: `1px solid ${it.color}44` }}>
-              <span style={{ fontSize: 14 }}>{it.icon}</span>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+  const fieldsEdit = (
+    <div className="list-section">
+      {overrides.customFields.map((f, idx) => (
+        <div key={idx} className="list-row">
+          <div style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--bg-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 13 }}>{FIELD_TYPE_ICONS[f.type] ?? '📝'}</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <input
-                type="text"
-                value={it.name}
-                onChange={e => updateIssueType(it.id, 'name', e.target.value)}
-                style={{
-                  fontSize: 13, fontWeight: 500, color: 'var(--text-primary)',
-                  background: 'transparent', border: 'none', padding: 0,
-                  outline: 'none', width: '100%',
+                type="text" value={f.name}
+                onChange={e => {
+                  const next = [...overrides.customFields]
+                  next[idx] = { ...next[idx], name: e.target.value }
+                  setOverrides({ ...overrides, customFields: next })
                 }}
+                style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', background: 'transparent', border: 'none', padding: 0, outline: 'none' }}
               />
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                Nivel
-                <select
-                  value={it.level}
-                  onChange={e => updateIssueType(it.id, 'level', parseInt(e.target.value))}
-                  style={{ fontSize: 11, padding: '1px 4px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-muted)' }}
-                >
-                  {[0, 1, 2, 3].map(l => <option key={l} value={l}>{l}</option>)}
-                </select>
-              </div>
-            </div>
-            <span className={`badge ${levelLabel(it.level) === 'Roadmaps' ? 'badge-amber' : levelLabel(it.level) === 'Sistema' ? 'badge-green' : 'badge-brand'}`}>
-              {levelLabel(it.level)}
-            </span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button className="btn btn-icon btn-sm btn-ghost" onClick={() => removeIssueType(it.id)}>
-                <Trash2 size={12} style={{ color: 'var(--red)' }} />
-              </button>
-            </div>
-          </div>
-        ))}
-        {types.length === 0 && (
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-            Nenhum issue type configurado. Clique em Adicionar.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Step 4: Custom Fields ────────────────────────────────
-
-function StepFields({ fields, setFields, issueTypeNames }: {
-  fields: (CustomFieldConfig & { id: string })[]
-  setFields: (f: (CustomFieldConfig & { id: string })[]) => void
-  issueTypeNames: string[]
-}) {
-  const addField = () => {
-    setFields([...fields, {
-      id: generateId(),
-      name: 'Novo campo',
-      type: 'text',
-      required: false,
-      scope: [],
-    }])
-  }
-
-  const removeField = (id: string) => {
-    setFields(fields.filter(f => f.id !== id))
-  }
-
-  const updateField = (id: string, field: string, value: unknown) => {
-    setFields(fields.map(f => f.id === id ? { ...f, [field]: value } : f))
-  }
-
-  return (
-    <div className="step-content">
-      <div className="step-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h3>Custom fields</h3>
-          <p>Campos adicionais alem dos padrao do Jira</p>
-        </div>
-        <button className="btn btn-sm btn-primary" onClick={addField}><Plus size={12} /> Adicionar</button>
-      </div>
-
-      <div className="list-section">
-        {fields.map(f => (
-          <div key={f.id} className="list-row">
-            <div style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--bg-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ fontSize: 13 }}>{FIELD_TYPE_ICONS[f.type] ?? '📝'}</span>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
                 <input
-                  type="text"
-                  value={f.name}
-                  onChange={e => updateField(f.id, 'name', e.target.value)}
-                  style={{
-                    fontSize: 13, fontWeight: 500, color: 'var(--text-primary)',
-                    background: 'transparent', border: 'none', padding: 0, outline: 'none',
+                  type="checkbox" checked={f.required}
+                  onChange={e => {
+                    const next = [...overrides.customFields]
+                    next[idx] = { ...next[idx], required: e.target.checked }
+                    setOverrides({ ...overrides, customFields: next })
                   }}
+                  style={{ width: 12, height: 12 }}
                 />
-                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={f.required}
-                    onChange={e => updateField(f.id, 'required', e.target.checked)}
-                    style={{ width: 12, height: 12 }}
-                  />
-                  <span style={{ color: f.required ? 'var(--red)' : 'var(--text-muted)' }}>obrigatorio</span>
-                </label>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
-                <select
-                  value={f.type}
-                  onChange={e => updateField(f.id, 'type', e.target.value)}
-                  style={{ fontSize: 11, padding: '1px 4px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-muted)' }}
-                >
-                  {Object.entries(FIELD_TYPE_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-                <span>Escopo:</span>
-                {issueTypeNames.map(name => (
-                  <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 10, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={f.scope.includes(name)}
-                      onChange={e => {
-                        const newScope = e.target.checked
-                          ? [...f.scope, name]
-                          : f.scope.filter(s => s !== name)
-                        updateField(f.id, 'scope', newScope)
-                      }}
-                      style={{ width: 10, height: 10 }}
-                    />
-                    {name}
-                  </label>
-                ))}
-              </div>
+                <span style={{ color: f.required ? 'var(--red)' : 'var(--text-muted)' }}>obrigatorio</span>
+              </label>
             </div>
-            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => removeField(f.id)}>
-              <Trash2 size={12} style={{ color: 'var(--red)' }} />
-            </button>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              <select
+                value={f.type}
+                onChange={e => {
+                  const next = [...overrides.customFields]
+                  next[idx] = { ...next[idx], type: e.target.value as CustomFieldConfig['type'] }
+                  setOverrides({ ...overrides, customFields: next })
+                }}
+                style={{ fontSize: 11, padding: '1px 4px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-muted)' }}
+              >
+                {Object.entries(FIELD_TYPE_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
           </div>
-        ))}
-        {fields.length === 0 && (
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-            Nenhum campo customizado. Clique em Adicionar.
-          </div>
-        )}
-      </div>
+          <button
+            className="btn btn-icon btn-sm btn-ghost"
+            onClick={() => {
+              const next = overrides.customFields.filter((_, i) => i !== idx)
+              setOverrides({ ...overrides, customFields: next })
+            }}
+          >
+            <span style={{ color: 'var(--red)', fontSize: 12 }}>x</span>
+          </button>
+        </div>
+      ))}
+      <button
+        className="btn btn-sm"
+        style={{ marginTop: 8 }}
+        onClick={() => setOverrides({
+          ...overrides,
+          customFields: [...overrides.customFields, { name: 'Novo campo', type: 'text', required: false, scope: [] }],
+        })}
+      >
+        <Plus size={12} /> Adicionar
+      </button>
     </div>
   )
-}
 
-// ─── Step 5: Workflow ─────────────────────────────────────
-
-function StepWorkflow({ statuses, transitions, setStatuses, setTransitions }: {
-  statuses: (WorkflowStatus & { id: string })[]
-  transitions: (WorkflowTransition & { id: string })[]
-  setStatuses: (s: (WorkflowStatus & { id: string })[]) => void
-  setTransitions: (t: (WorkflowTransition & { id: string })[]) => void
-}) {
-  const addStatus = () => {
-    const name = prompt('Nome do status:')
-    if (!name) return
-    setStatuses([...statuses, { id: generateId(), name, category: inferCategory(name) }])
-  }
-
-  const removeStatus = (id: string) => {
-    const s = statuses.find(s => s.id === id)
-    if (!s) return
-    setStatuses(statuses.filter(st => st.id !== id))
-    setTransitions(transitions.filter(t => t.from !== s.name && t.to !== s.name))
-  }
-
-  const addTransition = () => {
-    const statusNames = statuses.map(s => s.name)
-    if (statusNames.length < 2) return
-    setTransitions([...transitions, {
-      id: generateId(),
-      from: statusNames[0],
-      to: statusNames[1],
-      name: 'Nova transition',
-    }])
-  }
-
-  const removeTransition = (id: string) => {
-    setTransitions(transitions.filter(t => t.id !== id))
-  }
-
-  const updateTransition = (id: string, field: string, value: string) => {
-    setTransitions(transitions.map(t => t.id === id ? { ...t, [field]: value } : t))
-  }
-
-  const statusNames = ['*', ...statuses.map(s => s.name)]
-
-  return (
-    <div className="step-content">
-      <div className="step-header">
-        <h3>Workflow designer</h3>
-        <p>Statuses e transitions que definem como as issues se movem</p>
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Statuses ({statuses.length})
-          </div>
-          <button className="btn btn-sm" onClick={addStatus}><Plus size={12} /> Status</button>
+  // ── Workflow ──
+  const workflowStatuses = cfg.workflow.statuses
+  const workflowTransitions = cfg.workflow.transitions
+  const workflowReadOnly = (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+          Statuses ({workflowStatuses.length})
         </div>
         <div className="workflow-canvas">
-          {statuses.map((s, i) => (
-            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {workflowStatuses.map((name, i) => (
+            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div
                 className="status-bubble"
-                style={{ borderColor: (CATEGORY_COLOR[s.category] || 'var(--border)') + '60', color: CATEGORY_COLOR[s.category] || 'var(--text-muted)', position: 'relative' }}
+                style={{
+                  borderColor: (CATEGORY_COLOR[inferCategory(name)] || 'var(--border)') + '60',
+                  color: CATEGORY_COLOR[inferCategory(name)] || 'var(--text-muted)',
+                }}
               >
-                {s.name}
+                {name}
+              </div>
+              {i < workflowStatuses.length - 1 && (
+                <div style={{ width: 24, height: 1, background: 'var(--border-light)', flexShrink: 0 }} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+          Transitions ({workflowTransitions.length})
+        </div>
+        <div className="list-section">
+          {workflowTransitions.map((t, i) => (
+            <div key={i} className="list-row">
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {t.from === '*' ? 'Qualquer' : t.from}
+              </span>
+              <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />
+              <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{t.to}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>({t.name})</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+  const workflowEdit = (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Statuses ({overrides.workflowStatuses.length})
+          </div>
+          <button className="btn btn-sm" onClick={() => {
+            const name = prompt('Nome do status:')
+            if (!name) return
+            setOverrides({
+              ...overrides,
+              workflowStatuses: [...overrides.workflowStatuses, name],
+            })
+          }}>
+            <Plus size={12} /> Status
+          </button>
+        </div>
+        <div className="workflow-canvas">
+          {overrides.workflowStatuses.map((name, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div
+                className="status-bubble"
+                style={{
+                  borderColor: (CATEGORY_COLOR[inferCategory(name)] || 'var(--border)') + '60',
+                  color: CATEGORY_COLOR[inferCategory(name)] || 'var(--text-muted)',
+                  position: 'relative',
+                }}
+              >
+                {name}
                 <button
-                  onClick={() => removeStatus(s.id)}
+                  onClick={() => {
+                    const next = overrides.workflowStatuses.filter((_, idx) => idx !== i)
+                    const nextTransitions = overrides.workflowTransitions.filter(t => t.from !== name && t.to !== name)
+                    setOverrides({ ...overrides, workflowStatuses: next, workflowTransitions: nextTransitions })
+                  }}
                   style={{
                     position: 'absolute', top: -6, right: -6,
                     width: 14, height: 14, borderRadius: 7,
@@ -569,104 +627,179 @@ function StepWorkflow({ statuses, transitions, setStatuses, setTransitions }: {
                   }}
                 >x</button>
               </div>
-              {i < statuses.length - 1 && (
+              {i < overrides.workflowStatuses.length - 1 && (
                 <div style={{ width: 24, height: 1, background: 'var(--border-light)', flexShrink: 0 }} />
               )}
             </div>
           ))}
         </div>
       </div>
-
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Transitions ({transitions.length})
+            Transitions ({overrides.workflowTransitions.length})
           </div>
-          <button className="btn btn-sm" onClick={addTransition}><Plus size={12} /> Transition</button>
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              if (overrides.workflowStatuses.length < 2) return
+              setOverrides({
+                ...overrides,
+                workflowTransitions: [...overrides.workflowTransitions, {
+                  from: overrides.workflowStatuses[0],
+                  to: overrides.workflowStatuses[1],
+                  name: 'Nova transition',
+                }],
+              })
+            }}
+          >
+            <Plus size={12} /> Transition
+          </button>
         </div>
         <div className="list-section">
-          {transitions.map((t) => (
-            <div key={t.id} className="list-row">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, flexWrap: 'wrap' }}>
-                <select
-                  value={t.from}
-                  onChange={e => updateTransition(t.id, 'from', e.target.value)}
-                  style={{ fontSize: 12, padding: '2px 6px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 4 }}
+          {overrides.workflowTransitions.map((t, idx) => {
+            const statusNames = ['*', ...overrides.workflowStatuses]
+            return (
+              <div key={idx} className="list-row">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, flexWrap: 'wrap' }}>
+                  <select
+                    value={t.from}
+                    onChange={e => {
+                      const next = [...overrides.workflowTransitions]
+                      next[idx] = { ...next[idx], from: e.target.value }
+                      setOverrides({ ...overrides, workflowTransitions: next })
+                    }}
+                    style={{ fontSize: 12, padding: '2px 6px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 4 }}
+                  >
+                    {statusNames.map(n => <option key={n} value={n}>{n === '*' ? 'Qualquer' : n}</option>)}
+                  </select>
+                  <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />
+                  <select
+                    value={t.to}
+                    onChange={e => {
+                      const next = [...overrides.workflowTransitions]
+                      next[idx] = { ...next[idx], to: e.target.value }
+                      setOverrides({ ...overrides, workflowTransitions: next })
+                    }}
+                    style={{ fontSize: 12, padding: '2px 6px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 4 }}
+                  >
+                    {overrides.workflowStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <input
+                    type="text" value={t.name}
+                    onChange={e => {
+                      const next = [...overrides.workflowTransitions]
+                      next[idx] = { ...next[idx], name: e.target.value }
+                      setOverrides({ ...overrides, workflowTransitions: next })
+                    }}
+                    style={{ fontSize: 12, color: 'var(--text-muted)', background: 'transparent', border: 'none', padding: 0, outline: 'none', width: 100 }}
+                    placeholder="Nome..."
+                  />
+                </div>
+                <button
+                  className="btn btn-icon btn-sm btn-ghost"
+                  onClick={() => {
+                    const next = overrides.workflowTransitions.filter((_, i) => i !== idx)
+                    setOverrides({ ...overrides, workflowTransitions: next })
+                  }}
                 >
-                  {statusNames.map(n => <option key={n} value={n}>{n === '*' ? 'Qualquer' : n}</option>)}
-                </select>
-                <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />
-                <select
-                  value={t.to}
-                  onChange={e => updateTransition(t.id, 'to', e.target.value)}
-                  style={{ fontSize: 12, padding: '2px 6px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 4 }}
-                >
-                  {statuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                </select>
-                <input
-                  type="text"
-                  value={t.name}
-                  onChange={e => updateTransition(t.id, 'name', e.target.value)}
-                  style={{ fontSize: 12, color: 'var(--text-muted)', background: 'transparent', border: 'none', padding: 0, outline: 'none', width: 100 }}
-                  placeholder="Nome..."
-                />
+                  <span style={{ color: 'var(--red)', fontSize: 12 }}>x</span>
+                </button>
               </div>
-              <button className="btn btn-icon btn-sm btn-ghost" onClick={() => removeTransition(t.id)}>
-                <Trash2 size={12} style={{ color: 'var(--red)' }} />
-              </button>
-            </div>
-          ))}
-          {transitions.length === 0 && (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-              Nenhuma transition configurada.
-            </div>
-          )}
+            )
+          })}
         </div>
       </div>
     </div>
   )
-}
 
-// ─── Step 6: Schemes ──────────────────────────────────────
-
-function StepSchemes({ schemes, setSchemes }: {
-  schemes: { screenScheme: string; permissionScheme: string; notificationScheme: string; fieldConfiguration: string }
-  setSchemes: (s: { screenScheme: string; permissionScheme: string; notificationScheme: string; fieldConfiguration: string }) => void
-}) {
-  const items = [
-    { key: 'screenScheme',        label: 'Screen scheme',         hint: 'Create / Edit / View screens por issue type',       opts: ['auto', 'existing'],   labels: ['Gerar automaticamente', 'Usar existente'] },
-    { key: 'permissionScheme',    label: 'Permission scheme',      hint: 'Quem pode criar, editar, transicionar',             opts: ['default', 'custom'],  labels: ['NTT DATA Default', 'Criar novo'] },
-    { key: 'notificationScheme',  label: 'Notification scheme',    hint: 'Emails por evento',                                opts: ['default', 'custom'],  labels: ['NTT DATA Default', 'Criar novo'] },
-    { key: 'fieldConfiguration',  label: 'Field configuration',    hint: 'Campos obrigatorios / opcionais',                  opts: ['auto', 'custom'],     labels: ['Gerar automaticamente', 'Customizar'] },
-  ] as const
+  // ── Automations ──
+  const automationsReadOnly = (
+    <div className="list-section">
+      {(cfg.automations ?? []).map((rule, i) => (
+        <div key={i} className="list-row">
+          <Zap size={14} style={{ color: 'var(--brand-light)' }} />
+          <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{rule}</span>
+        </div>
+      ))}
+      {(!cfg.automations || cfg.automations.length === 0) && (
+        <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+          Nenhuma automacao configurada no template.
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div className="step-content">
       <div className="step-header">
-        <h3>Schemes &amp; permissoes</h3>
-        <p>Configuracoes administrativas — defaults recomendados para uso interno</p>
+        <h3>Revisar &amp; Customizar</h3>
+        <p>Por padrao tudo vem do template <strong>{template.name}</strong>. Clique em &ldquo;Customizar&rdquo; para ajustar por secao.</p>
       </div>
 
-      {items.map(item => (
-        <div key={item.key} className="scheme-row">
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{item.label}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{item.hint}</div>
-          </div>
-          <select
-            style={{ width: 'auto', minWidth: 180, fontSize: 12 }}
-            value={schemes[item.key as keyof typeof schemes]}
-            onChange={e => setSchemes({ ...schemes, [item.key]: e.target.value })}
-          >
-            {item.opts.map((o, i) => <option key={o} value={o}>{item.labels[i]}</option>)}
-          </select>
+      {/* Hierarchy — always read-only from template */}
+      <div style={{
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        marginBottom: 12,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '12px 16px',
+          background: 'var(--bg-overlay)',
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
+            Hierarquia
+            <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 6 }}>({cfg.hierarchy.levels.length} niveis)</span>
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Definido pelo template</span>
         </div>
-      ))}
+        <div style={{ padding: '12px 16px' }}>
+          {hierarchyContent}
+        </div>
+      </div>
+
+      <SectionToggle
+        title="Issue Types"
+        count={issueTypesData.length}
+        customizing={!!customizing.issueTypes}
+        onToggle={v => setCustomizing({ ...customizing, issueTypes: v })}
+        readOnlyContent={issueTypesReadOnly}
+        editContent={issueTypesEdit}
+      />
+
+      <SectionToggle
+        title="Custom Fields"
+        count={(customizing.customFields ? overrides.customFields : cfg.customFields).length}
+        customizing={!!customizing.customFields}
+        onToggle={v => setCustomizing({ ...customizing, customFields: v })}
+        readOnlyContent={fieldsReadOnly}
+        editContent={fieldsEdit}
+      />
+
+      <SectionToggle
+        title="Workflow"
+        count={undefined}
+        customizing={!!customizing.workflow}
+        onToggle={v => setCustomizing({ ...customizing, workflow: v })}
+        readOnlyContent={workflowReadOnly}
+        editContent={workflowEdit}
+      />
+
+      <SectionToggle
+        title="Automacoes"
+        count={(cfg.automations ?? []).length}
+        customizing={false}
+        onToggle={() => {}}
+        readOnlyContent={automationsReadOnly}
+        editContent={automationsReadOnly}
+      />
     </div>
   )
 }
 
-// ─── Step 7: Review & Deploy ──────────────────────────────
+// ─── Step 4: Deploy ──────────────────────────────────────
 
 interface DeployResult {
   success: boolean
@@ -687,35 +820,37 @@ const DEPLOY_STEP_LABELS: Record<string, string> = {
   schemes: 'Aplicando schemes',
 }
 
-function StepReview({
+function StepDeploy({
+  template,
   form,
-  issueTypes,
-  fields,
-  statuses,
-  transitions,
-  enableAdvancedRoadmaps,
+  overrides,
+  customizing,
   onDeploy,
   deploying,
   deployResult,
   deployError,
   jiraBaseUrl,
 }: {
-  form: Record<string, string>
-  issueTypes: { name: string }[]
-  fields: { name: string }[]
-  statuses: { name: string }[]
-  transitions: { name: string }[]
-  enableAdvancedRoadmaps: boolean
+  template: Template
+  form: { project_name: string; project_key: string; description: string; tenant_id: string; connection_id: string }
+  overrides: TemplateOverrides
+  customizing: Record<string, boolean>
   onDeploy: () => void
   deploying: boolean
   deployResult: DeployResult | null
   deployError: string | null
   jiraBaseUrl: string
 }) {
+  const cfg = template.config
+  const finalIssueTypes = customizing.issueTypes ? overrides.issueTypes : cfg.issueTypes
+  const finalFields = customizing.customFields ? overrides.customFields : cfg.customFields
+  const finalStatuses = customizing.workflow ? overrides.workflowStatuses : cfg.workflow.statuses
+  const finalTransitions = customizing.workflow ? overrides.workflowTransitions : cfg.workflow.transitions
+
   return (
     <div className="step-content">
       <div className="step-header">
-        <h3>Review &amp; Deploy</h3>
+        <h3>Deploy</h3>
         <p>Tudo pronto para criar no Jira Cloud</p>
       </div>
 
@@ -723,32 +858,42 @@ function StepReview({
         <>
           <div className="review-grid">
             <div className="review-block">
+              <div className="review-block-title">Template</div>
+              <div className="review-item"><div className="dot blue" />{template.icon || '📋'} {template.name}</div>
+            </div>
+            <div className="review-block">
               <div className="review-block-title">Projeto</div>
               <div className="review-item"><div className="dot blue" />{form.project_name || '(sem nome)'}</div>
               <div className="review-item"><div className="dot blue" /><code>{form.project_key || 'KEY'}</code> - Scrum</div>
-              {enableAdvancedRoadmaps && (
+              {cfg.hierarchy.requiresPremium && (
                 <div className="review-item"><div className="dot blue" />Advanced Roadmaps ativado</div>
               )}
             </div>
             <div className="review-block">
-              <div className="review-block-title">Issue types ({issueTypes.length})</div>
-              {issueTypes.length > 0 && (
-                <div className="review-item"><div className="dot purple" />{issueTypes.map(t => t.name).join(', ')}</div>
-              )}
-              {enableAdvancedRoadmaps && (
-                <div className="review-item"><div className="dot purple" />Hierarquia 3 niveis</div>
-              )}
-            </div>
-            <div className="review-block">
-              <div className="review-block-title">Custom fields ({fields.length})</div>
-              {fields.length > 0 && (
-                <div className="review-item"><div className="dot green" />{fields.map(f => f.name).join(' - ')}</div>
+              <div className="review-block-title">
+                Issue types ({finalIssueTypes.length})
+                {customizing.issueTypes && <span style={{ fontSize: 10, color: 'var(--brand-light)', marginLeft: 6 }}>customizado</span>}
+              </div>
+              {finalIssueTypes.length > 0 && (
+                <div className="review-item"><div className="dot purple" />{finalIssueTypes.map(t => t.name).join(', ')}</div>
               )}
             </div>
             <div className="review-block">
-              <div className="review-block-title">Workflow ({statuses.length} statuses, {transitions.length} transitions)</div>
-              {statuses.length > 0 && (
-                <div className="review-item"><div className="dot blue" />{statuses.map(s => s.name).join(' -> ')}</div>
+              <div className="review-block-title">
+                Custom fields ({finalFields.length})
+                {customizing.customFields && <span style={{ fontSize: 10, color: 'var(--brand-light)', marginLeft: 6 }}>customizado</span>}
+              </div>
+              {finalFields.length > 0 && (
+                <div className="review-item"><div className="dot green" />{finalFields.map(f => f.name).join(' - ')}</div>
+              )}
+            </div>
+            <div className="review-block">
+              <div className="review-block-title">
+                Workflow ({finalStatuses.length} statuses, {finalTransitions.length} transitions)
+                {customizing.workflow && <span style={{ fontSize: 10, color: 'var(--brand-light)', marginLeft: 6 }}>customizado</span>}
+              </div>
+              {finalStatuses.length > 0 && (
+                <div className="review-item"><div className="dot blue" />{finalStatuses.join(' -> ')}</div>
               )}
             </div>
           </div>
@@ -766,7 +911,7 @@ function StepReview({
 
       {deploying && (
         <div className="deploy-progress">
-          {(deployResult?.steps ?? Object.keys(DEPLOY_STEP_LABELS).map(key => ({ key, label: DEPLOY_STEP_LABELS[key], status: 'pending' }))).map((step, i) => {
+          {(deployResult?.steps ?? Object.keys(DEPLOY_STEP_LABELS).map(key => ({ key, label: DEPLOY_STEP_LABELS[key], status: 'pending' }))).map((step) => {
             const s = typeof step === 'object' && 'status' in step ? step : { key: step, label: DEPLOY_STEP_LABELS[(step as { key: string }).key] || '', status: 'pending' }
             return (
               <div key={s.key} className="progress-step">
@@ -852,6 +997,15 @@ function StepReview({
   )
 }
 
+// ─── Override State Type ─────────────────────────────────
+
+interface TemplateOverrides {
+  issueTypes: IssueTypeConfig[]
+  customFields: CustomFieldConfig[]
+  workflowStatuses: string[]
+  workflowTransitions: WorkflowTransition[]
+}
+
 // ─── Inner Page (needs useSearchParams inside Suspense) ──
 
 function BuilderPageInner() {
@@ -865,23 +1019,27 @@ function BuilderPageInner() {
   // ─── Wizard state ───────────────────────────────────────
   const [currentStep, setCurrentStep] = useState(0)
   const [selectedTemplate, setSelectedTemplate] = useState('')
-  const [enableAdvancedRoadmaps, setEnableAdvancedRoadmaps] = useState(false)
-
-  const [issueTypes, setIssueTypes] = useState<(IssueTypeConfig & { id: string })[]>([])
-  const [fields, setFields] = useState<(CustomFieldConfig & { id: string })[]>([])
-  const [statuses, setStatuses] = useState<(WorkflowStatus & { id: string })[]>([])
-  const [transitions, setTransitions] = useState<(WorkflowTransition & { id: string })[]>([])
-  const [schemes, setSchemes] = useState({
-    screenScheme: 'auto',
-    permissionScheme: 'default',
-    notificationScheme: 'default',
-    fieldConfiguration: 'auto',
-  })
 
   const [form, setForm] = useState({
     tenant_id: '', connection_id: '',
-    project_name: '', project_key: '', project_type: 'scrum', description: '',
+    project_name: '', project_key: '', description: '',
   })
+
+  // Overrides: local editable copy of template config sections
+  const [overrides, setOverrides] = useState<TemplateOverrides>({
+    issueTypes: [],
+    customFields: [],
+    workflowStatuses: [],
+    workflowTransitions: [],
+  })
+
+  // Which sections are being customized (overridden)
+  const [customizing, setCustomizing] = useState<Record<string, boolean>>({
+    issueTypes: false,
+    customFields: false,
+    workflow: false,
+  })
+
   const [deploying, setDeploying] = useState(false)
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null)
   const [deployError, setDeployError] = useState<string | null>(null)
@@ -889,67 +1047,40 @@ function BuilderPageInner() {
   // ─── Connection hook depends on selected tenant ─────────
   const { connections, loading: connectionsLoading } = useConnections(form.tenant_id || null)
 
+  // ─── Resolve selected template object ───────────────────
+  const template = templates.find(t => t.id === selectedTemplate) ?? null
+
   // ─── Auto-select template from URL param ────────────────
   useEffect(() => {
     if (templateParam && templates.length > 0 && !selectedTemplate) {
       const found = templates.find(t => t.id === templateParam)
       if (found) {
         setSelectedTemplate(found.id)
-        applyTemplate(found)
+        initOverrides(found)
       }
     }
   }, [templateParam, templates]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Apply template config to builder state ─────────────
-  const applyTemplate = useCallback((template: Template) => {
-    const cfg = template.config
+  // ─── Initialize overrides from template config ──────────
+  const initOverrides = useCallback((tmpl: Template) => {
+    const cfg = tmpl.config
     if (!cfg) return
-
-    // Issue types
-    if (cfg.issueTypes?.length) {
-      setIssueTypes(cfg.issueTypes.map(it => ({ ...it, id: generateId() })))
-    }
-
-    // Custom fields
-    if (cfg.customFields?.length) {
-      setFields(cfg.customFields.map(f => ({ ...f, id: generateId() })))
-    }
-
-    // Workflow
-    if (cfg.workflow) {
-      if (cfg.workflow.statuses?.length) {
-        setStatuses(cfg.workflow.statuses.map(name => ({
-          id: generateId(),
-          name,
-          category: inferCategory(name),
-        })))
-      }
-      if (cfg.workflow.transitions?.length) {
-        setTransitions(cfg.workflow.transitions.map(t => ({ ...t, id: generateId() })))
-      }
-    }
-
-    // Hierarchy / Advanced Roadmaps
-    if (cfg.hierarchy?.requiresPremium) {
-      setEnableAdvancedRoadmaps(true)
-    }
-
-    // Schemes
-    if (cfg.schemes) {
-      setSchemes(prev => ({
-        ...prev,
-        permissionScheme: cfg.schemes?.permissionScheme || 'default',
-        notificationScheme: cfg.schemes?.notificationScheme || 'default',
-      }))
-    }
+    setOverrides({
+      issueTypes: cfg.issueTypes ? [...cfg.issueTypes] : [],
+      customFields: cfg.customFields ? [...cfg.customFields] : [],
+      workflowStatuses: cfg.workflow?.statuses ? [...cfg.workflow.statuses] : [],
+      workflowTransitions: cfg.workflow?.transitions ? [...cfg.workflow.transitions] : [],
+    })
+    // Reset all customizing flags
+    setCustomizing({ issueTypes: false, customFields: false, workflow: false })
   }, [])
 
   // ─── Handle template selection ──────────────────────────
   const handleSelectTemplate = (id: string) => {
     setSelectedTemplate(id)
-    const template = templates.find(t => t.id === id)
-    if (template) {
-      applyTemplate(template)
+    const tmpl = templates.find(t => t.id === id)
+    if (tmpl) {
+      initOverrides(tmpl)
     }
   }
 
@@ -967,11 +1098,50 @@ function BuilderPageInner() {
   const canProceed = () => {
     if (currentStep === 0) return !!selectedTemplate
     if (currentStep === 1) return !!form.project_name && !!form.project_key && !!form.tenant_id && !!form.connection_id
+    if (currentStep === 2) return !!template
     return true
+  }
+
+  // ─── Build final payload resolving overrides ────────────
+  const buildPayload = () => {
+    if (!template) return null
+    const cfg = template.config
+
+    const finalIssueTypes = customizing.issueTypes ? overrides.issueTypes : cfg.issueTypes
+    const finalFields = customizing.customFields ? overrides.customFields : cfg.customFields
+    const finalStatuses = customizing.workflow ? overrides.workflowStatuses : cfg.workflow.statuses
+    const finalTransitions = customizing.workflow ? overrides.workflowTransitions : cfg.workflow.transitions
+
+    return {
+      tenant_id: form.tenant_id,
+      jira_connection_id: form.connection_id,
+      template_id: template.id,
+      project_name: form.project_name,
+      project_key: form.project_key,
+      project_type: 'scrum',
+      description: form.description,
+      issueTypes: finalIssueTypes,
+      customFields: finalFields,
+      workflow: {
+        statuses: finalStatuses,
+        transitions: finalTransitions,
+      },
+      schemes: {
+        screenScheme: 'auto',
+        permissionScheme: cfg.schemes?.permissionScheme || 'default',
+        notificationScheme: cfg.schemes?.notificationScheme || 'default',
+        fieldConfiguration: 'auto',
+      },
+      hierarchy: cfg.hierarchy,
+      created_by: 'ntt-data-user',
+    }
   }
 
   // ─── Deploy ─────────────────────────────────────────────
   const handleDeploy = async () => {
+    const payload = buildPayload()
+    if (!payload) return
+
     setDeploying(true)
     setDeployResult(null)
     setDeployError(null)
@@ -980,32 +1150,7 @@ function BuilderPageInner() {
       const res = await fetch('/api/projects/deploy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenant_id: form.tenant_id,
-          jira_connection_id: form.connection_id,
-          template_id: selectedTemplate || undefined,
-          project_name: form.project_name,
-          project_key: form.project_key,
-          project_type: 'scrum',
-          description: form.description,
-          enableAdvancedRoadmaps,
-          issueTypes: issueTypes.map(({ id, ...rest }) => rest),
-          customFields: fields.map(({ id, ...rest }) => rest),
-          workflow: {
-            statuses: statuses.map(s => s.name),
-            transitions: transitions.map(({ id, ...rest }) => rest),
-          },
-          schemes: {
-            screenScheme: schemes.screenScheme,
-            permissionScheme: schemes.permissionScheme,
-            notificationScheme: schemes.notificationScheme,
-            fieldConfiguration: schemes.fieldConfiguration,
-          },
-          hierarchy: enableAdvancedRoadmaps
-            ? { levels: ['Iniciativa', 'Epico', 'Story', 'Subtask'], requiresPremium: true }
-            : { levels: ['Epico', 'Story', 'Subtask'], requiresPremium: false },
-          created_by: 'ntt-data-user',
-        }),
+        body: JSON.stringify(payload),
       })
 
       const json = await res.json()
@@ -1029,7 +1174,7 @@ function BuilderPageInner() {
     switch (currentStep) {
       case 0:
         return (
-          <StepTemplate
+          <StepSelectTemplate
             selected={selectedTemplate}
             onSelect={handleSelectTemplate}
             templates={templates}
@@ -1038,54 +1183,45 @@ function BuilderPageInner() {
         )
       case 1:
         return (
-          <StepProject
+          <StepClientConnection
             form={form}
             onChange={updateForm}
             tenants={tenants}
             tenantsLoading={tenantsLoading}
             connections={connections}
             connectionsLoading={connectionsLoading}
-            enableAdvancedRoadmaps={enableAdvancedRoadmaps}
-            onToggleAdvancedRoadmaps={setEnableAdvancedRoadmaps}
           />
         )
       case 2:
-        return <StepIssueTypes types={issueTypes} setTypes={setIssueTypes} />
+        return template ? (
+          <StepReviewCustomize
+            template={template}
+            overrides={overrides}
+            customizing={customizing}
+            setCustomizing={setCustomizing}
+            setOverrides={setOverrides}
+          />
+        ) : (
+          <div className="step-content">
+            <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 13 }}>
+              Nenhum template selecionado. Volte ao passo 1.
+            </div>
+          </div>
+        )
       case 3:
-        return (
-          <StepFields
-            fields={fields}
-            setFields={setFields}
-            issueTypeNames={issueTypes.map(t => t.name)}
-          />
-        )
-      case 4:
-        return (
-          <StepWorkflow
-            statuses={statuses}
-            transitions={transitions}
-            setStatuses={setStatuses}
-            setTransitions={setTransitions}
-          />
-        )
-      case 5:
-        return <StepSchemes schemes={schemes} setSchemes={setSchemes} />
-      case 6:
-        return (
-          <StepReview
+        return template ? (
+          <StepDeploy
+            template={template}
             form={form}
-            issueTypes={issueTypes}
-            fields={fields}
-            statuses={statuses}
-            transitions={transitions}
-            enableAdvancedRoadmaps={enableAdvancedRoadmaps}
+            overrides={overrides}
+            customizing={customizing}
             onDeploy={handleDeploy}
             deploying={deploying}
             deployResult={deployResult}
             deployError={deployError}
             jiraBaseUrl={jiraBaseUrl}
           />
-        )
+        ) : null
       default:
         return null
     }
@@ -1096,7 +1232,7 @@ function BuilderPageInner() {
       <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
           <h1>Novo projeto</h1>
-          <p>Configure e crie um projeto completo no Jira do cliente</p>
+          <p>Selecione um template, escolha o cliente, revise e crie no Jira</p>
         </div>
       </div>
 

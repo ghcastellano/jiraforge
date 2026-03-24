@@ -160,11 +160,21 @@ function NewTemplateModal({ onClose, onCreate }: {
 
 export default function TemplatesPage() {
   const router = useRouter()
-  const { templates, loading, reload, createTemplate } = useTemplates()
+  const { templates, loading, reload, createTemplate, deleteTemplate, duplicateTemplate } = useTemplates()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'global' | 'custom'>('all')
   const [detail, setDetail] = useState<Template | null>(null)
   const [newOpen, setNewOpen] = useState(false)
+
+  const handleEdit = (id: string) => router.push(`/templates/${id}/edit`)
+  const handleDuplicate = async (id: string) => {
+    await duplicateTemplate(id)
+    reload()
+  }
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este template?')) return
+    await deleteTemplate(id)
+  }
 
   const filtered = templates.filter(t => {
     const matchSearch = t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -215,7 +225,7 @@ export default function TemplatesPage() {
           <h1>Templates</h1>
           <p>Biblioteca global NTT DATA — reutilize configuracoes completas de projeto</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setNewOpen(true)}>
+        <button className="btn btn-primary" onClick={() => router.push('/templates/new')}>
           <Plus size={14} /> Novo template
         </button>
       </div>
@@ -265,19 +275,19 @@ export default function TemplatesPage() {
                 <span>{workflowStatuses.length} statuses</span>
               </div>
               <div className="tc-actions" onClick={e => e.stopPropagation()}>
-                <button className="btn btn-sm btn-ghost"><Edit3 size={12} /></button>
-                <button className="btn btn-sm btn-ghost"><Copy size={12} /></button>
-                <button className="btn btn-sm btn-ghost"><Trash2 size={12} style={{ color: 'var(--red)' }} /></button>
+                <button className="btn btn-sm btn-ghost" onClick={() => handleEdit(t.id)} title="Editar"><Edit3 size={12} /></button>
+                <button className="btn btn-sm btn-ghost" onClick={() => handleDuplicate(t.id)} title="Duplicar"><Copy size={12} /></button>
+                <button className="btn btn-sm btn-ghost" onClick={() => handleDelete(t.id)} title="Excluir"><Trash2 size={12} style={{ color: 'var(--red)' }} /></button>
                 <button className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }}
-                  onClick={() => setDetail(t)}>
-                  Ver <ChevronRight size={12} />
+                  onClick={() => router.push(`/builder?template=${t.id}`)}>
+                  Usar <ChevronRight size={12} />
                 </button>
               </div>
             </div>
           )
         })}
 
-        <div className="template-card card new-card" onClick={() => setNewOpen(true)}>
+        <div className="template-card card new-card" onClick={() => router.push('/templates/new')}>
           <div className="new-card-inner">
             <div className="new-card-icon"><Plus size={20} /></div>
             <div className="new-card-label">Criar template</div>
