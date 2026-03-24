@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Zap, Plus, CheckCircle2, XCircle, Clock,
   ToggleLeft, ToggleRight, Trash2, ExternalLink,
   AlertCircle, Loader2, RefreshCw, X, ChevronRight,
   Activity, Wifi
 } from 'lucide-react'
-import { useAutomations, useTenants } from '@/hooks'
+import { useAutomations, useTenants, useConnections } from '@/hooks'
 import type { AutomationRule } from '@/types'
 
 const RULE_LABELS: Record<string, { label: string; desc: string; icon: string }> = {
@@ -116,10 +116,142 @@ function RuleCard({ rule, onToggle, onDelete, onShowLogs }: {
   )
 }
 
+function NewRuleModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { tenants, loading: tenantsLoading } = useTenants()
+  const [tenantId, setTenantId] = useState('')
+  const { connections, loading: connsLoading } = useConnections(tenantId || null)
+  const [connectionId, setConnectionId] = useState('')
+  const [ruleType, setRuleType] = useState<string>('story_bug_to_epic')
+  const [projectKey, setProjectKey] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { setConnectionId('') }, [tenantId])
+
+  const submit = async () => {
+    setError(null)
+    setSaving(true)
+    try {
+      const res = await fetch('/api/automations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          jira_connection_id: connectionId,
+          rule_type: ruleType,
+          project_key: projectKey || null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Erro ao criar regra')
+      if (json.warning) alert(json.warning)
+      onCreated()
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro desconhecido')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Nova Roll-up Rule</h2>
+          <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="modal-body">
+          {error && (
+            <div className="rule-error" style={{ marginBottom: 16 }}>
+              <AlertCircle size={12} /> {error}
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="form-label">Cliente</label>
+            <select value={tenantId} onChange={e => setTenantId(e.target.value)}>
+              <option value="">Selecione o cliente...</option>
+              {!tenantsLoading && tenants.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Conexao Jira</label>
+            <select value={connectionId} onChange={e => setConnectionId(e.target.value)} disabled={!tenantId}>
+              <option value="">Selecione a conexao...</option>
+              {!connsLoading && connections.map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({c.jira_base_url.replace('https://', '')})</option>
+              ))}
+            </select>
+            {tenantId && !connsLoading && connections.length === 0 && (
+              <span className="form-hint" style={{ color: 'var(--red)' }}>Nenhuma conexao encontrada. Configure uma em Configuracoes.</span>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Tipo de regra</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {Object.entries(RULE_LABELS).map(([key, info]) => (
+                <label
+                  key={key}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
+                    background: ruleType === key ? 'var(--brand-dim)' : 'var(--bg-elevated)',
+                    border: `1px solid ${ruleType === key ? 'var(--brand-border)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-md)', cursor: 'pointer', transition: 'all 0.15s',
+                  }}
+                >
+                  <input
+                    type="radio" name="ruleType" value={key}
+                    checked={ruleType === key}
+                    onChange={() => setRuleType(key)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
+                      {info.icon} {info.label}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{info.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Projeto (opcional)</label>
+            <input
+              type="text"
+              placeholder="Ex: DAP (deixe vazio para todos os projetos)"
+              value={projectKey}
+              onChange={e => setProjectKey(e.target.value.toUpperCase())}
+            />
+            <span className="form-hint">Se vazio, a regra se aplica a todos os projetos desta conexao</span>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn" onClick={onClose}>Cancelar</button>
+          <button
+            className="btn btn-primary"
+            onClick={submit}
+            disabled={saving || !tenantId || !connectionId || !ruleType}
+          >
+            {saving ? <><Loader2 size={13} className="animate-spin" /> Criando...</> : 'Criar regra'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AutomationsPage() {
   const { rules, loading, reload, toggleRule } = useAutomations()
   const { tenants, loading: tenantsLoading } = useTenants()
   const [filterTenant, setFilterTenant] = useState('all')
+  const [newRuleOpen, setNewRuleOpen] = useState(false)
 
   const filtered = rules.filter(r => filterTenant === 'all' || r.tenant_id === filterTenant)
 
@@ -160,7 +292,7 @@ export default function AutomationsPage() {
           <h1>Roll-up Rules</h1>
           <p>Automacoes de hierarquia implementadas via webhook service</p>
         </div>
-        <button className="btn btn-primary"><Plus size={14} /> Nova rule</button>
+        <button className="btn btn-primary" onClick={() => setNewRuleOpen(true)}><Plus size={14} /> Nova rule</button>
       </div>
 
       <ServiceStatus />
@@ -208,11 +340,17 @@ export default function AutomationsPage() {
             <div className="empty-icon"><Zap size={20} /></div>
             <div className="empty-title">Nenhuma rule encontrada</div>
             <div className="empty-desc">Crie uma rule de roll-up para este cliente</div>
-            <button className="btn btn-primary"><Plus size={14} /> Nova rule</button>
+            <button className="btn btn-primary" onClick={() => setNewRuleOpen(true)}><Plus size={14} /> Nova rule</button>
           </div>
         )}
       </div>
 
+      {newRuleOpen && (
+        <NewRuleModal
+          onClose={() => setNewRuleOpen(false)}
+          onCreated={reload}
+        />
+      )}
     </div>
   )
 }
